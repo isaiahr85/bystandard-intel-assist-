@@ -1,0 +1,26 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <path
+        android:fillColor="#0F1B2E"
+        android:pathData="M12,6 L52,6 A6,6 0 0,1 58,12 L58,52 A6,6 0 0,1 52,58 L12,58 A6,6 0 0,1 6,52 L6,12 A6,6 0 0,1 12,6 Z" />
+    <path
+        android:strokeColor="#38BDF8"
+        android:strokeWidth="2.2"
+        android:pathData="M12,6 L52,6 A6,6 0 0,1 58,12 L58,52 A6,6 0 0,1 52,58 L12,58 A6,6 0 0,1 6,52 L6,12 A6,6 0 0,1 12,6 Z" />
+    <!-- Group swarm ring -->
+    <path
+        android:strokeColor="#1D4ED8"
+        android:strokeWidth="2"
+        android:pathData="M32,14 A18,18 0 1,1 31.9,14 Z" />
+    <!-- Stylized F stem & cross -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M34,50 L28,50 L28,34 L23,34 L23,28 L28,28 L28,24 C28,19.5 31,17 36,17 L41,17 L41,22 L37,22 C35,22 34,23 34,25 L34,28 L41,28 L40,34 L34,34 Z" />
+    <!-- Swarm bot telemetry dots (High-Degree Trap indicator) -->
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M15,18 m-2.5,0 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 M49,18 m-2.5,0 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 M49,46 m-2.5,0 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0" />
+</vector>

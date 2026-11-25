@@ -1,0 +1,30 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <path
+        android:fillColor="#131D31"
+        android:pathData="M32,4 L58,18 L58,46 L32,60 L6,46 L6,18 Z" />
+    <path
+        android:strokeColor="#FFB703"
+        android:strokeWidth="2"
+        android:pathData="M32,4 L58,18 L58,46 L32,60 L6,46 L6,18 Z" />
+    <!-- Target concentric rings -->
+    <path
+        android:strokeColor="#FFB703"
+        android:strokeWidth="2.5"
+        android:pathData="M32,16 A16,16 0 1,0 32,48 A16,16 0 1,0 32,16 Z" />
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="2"
+        android:pathData="M32,23 A9,9 0 1,0 32,41 A9,9 0 1,0 32,23 Z" />
+    <!-- Goal-seeking prism arrow -->
+    <path
+        android:fillColor="#FFB703"
+        android:pathData="M32,27 L37,35 L27,35 Z" />
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="2"
+        android:pathData="M32,11 V19 M32,45 V53 M11,32 H19 M45,32 H53" />
+</vector>

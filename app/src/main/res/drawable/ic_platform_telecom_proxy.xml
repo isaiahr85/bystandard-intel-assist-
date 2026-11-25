@@ -1,0 +1,30 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <path
+        android:fillColor="#111827"
+        android:pathData="M12,6 L52,6 A6,6 0 0,1 58,12 L58,52 A6,6 0 0,1 52,58 L12,58 A6,6 0 0,1 6,52 L6,12 A6,6 0 0,1 12,6 Z" />
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="2.2"
+        android:pathData="M12,6 L52,6 A6,6 0 0,1 58,12 L58,52 A6,6 0 0,1 52,58 L12,58 A6,6 0 0,1 6,52 L6,12 A6,6 0 0,1 12,6 Z" />
+    <!-- Fiber / Proxy Server Rack -->
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="2"
+        android:fillColor="#1E293B"
+        android:pathData="M16,15 L48,15 L48,25 L16,25 Z M16,28 L48,28 L48,38 L16,38 Z M16,41 L48,41 L48,51 L16,51 Z" />
+    <!-- Rack LEDs & fiber links -->
+    <path
+        android:fillColor="#10B981"
+        android:pathData="M21,20 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 M21,33 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+    <path
+        android:fillColor="#EF4444"
+        android:pathData="M21,46 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+    <path
+        android:strokeColor="#A78BFA"
+        android:strokeWidth="2"
+        android:pathData="M28,20 H43 M28,33 H43 M28,46 H43" />
+</vector>

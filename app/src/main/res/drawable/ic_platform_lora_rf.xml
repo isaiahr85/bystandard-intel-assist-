@@ -1,0 +1,30 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <path
+        android:fillColor="#171226"
+        android:pathData="M12,6 L52,6 A6,6 0 0,1 58,12 L58,52 A6,6 0 0,1 52,58 L12,58 A6,6 0 0,1 6,52 L6,12 A6,6 0 0,1 12,6 Z" />
+    <path
+        android:strokeColor="#A78BFA"
+        android:strokeWidth="2.2"
+        android:pathData="M12,6 L52,6 A6,6 0 0,1 58,12 L58,52 A6,6 0 0,1 52,58 L12,58 A6,6 0 0,1 6,52 L6,12 A6,6 0 0,1 12,6 Z" />
+    <!-- Mast / Relay Antenna -->
+    <path
+        android:strokeColor="#E2E8F0"
+        android:strokeWidth="2.5"
+        android:pathData="M32,50 L32,26 M24,50 L40,50 M27,42 L37,42" />
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M32,25 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" />
+    <!-- 915 MHz LoRa RF Waves -->
+    <path
+        android:strokeColor="#A78BFA"
+        android:strokeWidth="2"
+        android:pathData="M23,18 A12,12 0 0,0 23,32 M41,18 A12,12 0 0,1 41,32" />
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="2"
+        android:pathData="M17,13 A19,19 0 0,0 17,37 M47,13 A19,19 0 0,1 47,37" />
+</vector>

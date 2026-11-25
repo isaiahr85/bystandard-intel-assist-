@@ -1,0 +1,26 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <path
+        android:fillColor="#131D31"
+        android:pathData="M32,4 L58,18 L58,46 L32,60 L6,46 L6,18 Z" />
+    <path
+        android:strokeColor="#8B5CF6"
+        android:strokeWidth="2"
+        android:pathData="M32,4 L58,18 L58,46 L32,60 L6,46 L6,18 Z" />
+    <!-- Antenna mast -->
+    <path
+        android:strokeColor="#E2E8F0"
+        android:strokeWidth="2.5"
+        android:pathData="M32,26 V49 M24,49 H40" />
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M32,24 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" />
+    <!-- RF emission arcs -->
+    <path
+        android:strokeColor="#8B5CF6"
+        android:strokeWidth="2"
+        android:pathData="M23,17 C20,21 20,27 23,31 M41,17 C44,21 44,27 41,31 M17,13 C12,20 12,28 17,35 M47,13 C52,20 52,28 47,35" />
+</vector>

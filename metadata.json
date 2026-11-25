@@ -1,0 +1,6 @@
+{
+  "name": "VeriScope",
+  "description": "Forensic intelligence catalog, digital evidence archives, repository discovery, and multimodal verification toolkit.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

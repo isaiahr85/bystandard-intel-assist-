@@ -1,0 +1,30 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <path
+        android:fillColor="#131D31"
+        android:pathData="M32,4 L58,18 L58,46 L32,60 L6,46 L6,18 Z" />
+    <path
+        android:strokeColor="#3B82F6"
+        android:strokeWidth="2"
+        android:pathData="M32,4 L58,18 L58,46 L32,60 L6,46 L6,18 Z" />
+    <!-- Drone arms -->
+    <path
+        android:strokeColor="#E2E8F0"
+        android:strokeWidth="2.5"
+        android:pathData="M20,20 L44,44 M44,20 L20,44" />
+    <!-- Rotors -->
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="2"
+        android:pathData="M19,19 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0 M45,19 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0 M19,45 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0 M45,45 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0" />
+    <!-- Fuselage -->
+    <path
+        android:fillColor="#3B82F6"
+        android:pathData="M27,26 H37 V38 H27 Z" />
+    <path
+        android:fillColor="#FFB703"
+        android:pathData="M32,32 m-2.5,0 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0" />
+</vector>

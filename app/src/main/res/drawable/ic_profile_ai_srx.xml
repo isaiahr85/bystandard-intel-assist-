@@ -1,0 +1,28 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <path
+        android:fillColor="#131D31"
+        android:pathData="M32,4 L58,18 L58,46 L32,60 L6,46 L6,18 Z" />
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="2"
+        android:pathData="M32,4 L58,18 L58,46 L32,60 L6,46 L6,18 Z" />
+    <!-- Bot head / rule grid -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M20,22 H44 V38 H20 Z" />
+    <path
+        android:fillColor="#070B12"
+        android:pathData="M24,27 H29 V32 H24 Z M35,27 H40 V32 H35 Z M26,35 H38 V37 H26 Z" />
+    <!-- Rule antenna -->
+    <path
+        android:strokeColor="#FFB703"
+        android:strokeWidth="2.5"
+        android:pathData="M32,14 V22 M25,42 L20,48 M32,42 V49 M39,42 L44,48" />
+    <path
+        android:fillColor="#FFB703"
+        android:pathData="M32,12 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+</vector>

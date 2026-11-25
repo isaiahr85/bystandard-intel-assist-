@@ -1,0 +1,25 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <path
+        android:fillColor="#131D31"
+        android:pathData="M32,4 L58,18 L58,46 L32,60 L6,46 L6,18 Z" />
+    <path
+        android:strokeColor="#10B981"
+        android:strokeWidth="2"
+        android:pathData="M32,4 L58,18 L58,46 L32,60 L6,46 L6,18 Z" />
+    <!-- Operative silhouette -->
+    <path
+        android:fillColor="#E2E8F0"
+        android:pathData="M32,16 A7,7 0 1,0 32,30 A7,7 0 1,0 32,16 Z" />
+    <path
+        android:fillColor="#10B981"
+        android:pathData="M18,48 C18,37 24,33 32,33 C40,33 46,37 46,48 Z" />
+    <!-- Bridge reticle -->
+    <path
+        android:strokeColor="#FFB703"
+        android:strokeWidth="1.8"
+        android:pathData="M14,23 H22 M42,23 H50" />
+</vector>

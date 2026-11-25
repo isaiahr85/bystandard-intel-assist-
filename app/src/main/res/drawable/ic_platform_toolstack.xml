@@ -1,0 +1,26 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <path
+        android:fillColor="#0D1821"
+        android:pathData="M12,6 L52,6 A6,6 0 0,1 58,12 L58,52 A6,6 0 0,1 52,58 L12,58 A6,6 0 0,1 6,52 L6,12 A6,6 0 0,1 12,6 Z" />
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="2.2"
+        android:pathData="M12,6 L52,6 A6,6 0 0,1 58,12 L58,52 A6,6 0 0,1 52,58 L12,58 A6,6 0 0,1 6,52 L6,12 A6,6 0 0,1 12,6 Z" />
+    <!-- 6-Tool Fusion Hexagon Graph -->
+    <path
+        android:strokeColor="#38BDF8"
+        android:strokeWidth="1.8"
+        android:pathData="M32,14 L47,23 L47,41 L32,50 L17,41 L17,23 Z M32,14 L32,50 M17,23 L47,41 M47,23 L17,41" />
+    <!-- Outer tool vertices -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M32,14 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 M47,23 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 M47,41 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 M32,50 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 M17,41 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 M17,23 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+    <!-- Center Fusion Hub -->
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M32,32 m-4.5,0 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0" />
+</vector>

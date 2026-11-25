@@ -1,0 +1,26 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <path
+        android:fillColor="#1A0F1A"
+        android:pathData="M32,4 L58,18 L58,46 L32,60 L6,46 L6,18 Z" />
+    <path
+        android:strokeColor="#EF4444"
+        android:strokeWidth="2.5"
+        android:pathData="M32,4 L58,18 L58,46 L32,60 L6,46 L6,18 Z" />
+    <!-- Autonomous orchestrator neural links -->
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="2"
+        android:pathData="M32,32 L18,20 M32,32 L46,20 M32,32 L18,44 M32,32 L46,44 M32,32 V14" />
+    <!-- Central high-betweenness core -->
+    <path
+        android:fillColor="#EF4444"
+        android:pathData="M32,25 L39,32 L32,39 L25,32 Z" />
+    <!-- Subordinate nodes -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M18,20 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 M46,20 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 M18,44 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 M46,44 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+</vector>
