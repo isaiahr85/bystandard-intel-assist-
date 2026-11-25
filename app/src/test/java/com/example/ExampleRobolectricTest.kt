@@ -1030,6 +1030,7 @@ class ExampleRobolectricTest {
     composeTestRule.onNodeWithTag("split_map_container_sat_airspace").assertExists()
     composeTestRule.onNodeWithTag("split_pane_left").assertExists()
     composeTestRule.onNodeWithTag("split_pane_right").assertExists()
+    composeTestRule.onNodeWithTag("fullscreen_bottom_exit_btn").assertExists()
 
     composeTestRule.onNodeWithTag("fullscreen_north_up_btn").performClick()
     composeTestRule.waitForIdle()
@@ -1086,8 +1087,9 @@ class ExampleRobolectricTest {
     composeTestRule.onNodeWithTag("sat_fullscreen_btn").performScrollTo().performClick()
     composeTestRule.waitForIdle()
     composeTestRule.onNodeWithTag("fullscreen_map_viewer").assertExists()
-    composeTestRule.onNodeWithTag("fullscreen_exit_btn").performClick()
+    composeTestRule.onNodeWithTag("fullscreen_bottom_exit_btn").assertExists().performClick()
     composeTestRule.waitForIdle()
+    composeTestRule.onNodeWithTag("fullscreen_map_viewer").assertDoesNotExist()
     composeTestRule.onNodeWithTag("sat_overlay_options_row")
       .performScrollTo()
       .performScrollToNode(hasTestTag("sat_split_airspace_btn"))

@@ -52,6 +52,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -111,14 +112,16 @@ fun FullScreenMapViewer(
         label = "map_tilt"
     )
 
-    // Auto-hide system status/navigation bars when entering true full-screen mode
-    DisposableEffect(view, context) {
+    // Hide system navigation bar while keeping transparent edge-to-edge status bar so
+    // Android's OS-level "Viewing full screen / Got it" cling never covers the HUD or traps input.
+    DisposableEffect(view, context, palette.mode) {
         val window = context.findActivityWindow()
         val controller = window?.let { WindowCompat.getInsetsController(it, view) }
         runCatching {
             controller?.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            controller?.hide(WindowInsetsCompat.Type.systemBars())
+            controller?.isAppearanceLightStatusBars = (palette.mode == MapVisualThemeMode.DAY)
+            controller?.hide(WindowInsetsCompat.Type.navigationBars())
         }
         onDispose {
             runCatching {
@@ -176,6 +179,7 @@ fun FullScreenMapViewer(
                 panOffset = panOffset,
                 tiltGestureMode = isTiltModeGesture,
                 cameraDistPx = 14f * density.density,
+                bottomHudClearanceDp = 76.dp,
                 onPanChange = { panOffset = it },
                 onTransform = { newZoom, deltaRot, deltaTilt, latency ->
                     if (isSatCenterMode) {
@@ -216,6 +220,7 @@ fun FullScreenMapViewer(
                     panOffset = panOffset,
                     tiltGestureMode = isTiltModeGesture,
                     cameraDistPx = 14f * density.density,
+                    bottomHudClearanceDp = if (isWideLayout) 76.dp else 10.dp,
                     onPanChange = { panOffset = it },
                     onTransform = { newZoom, deltaRot, deltaTilt, latency ->
                         viewModel.updateMapTransform(
@@ -247,6 +252,7 @@ fun FullScreenMapViewer(
                     panOffset = panOffset,
                     tiltGestureMode = isTiltModeGesture,
                     cameraDistPx = 14f * density.density,
+                    bottomHudClearanceDp = 76.dp,
                     onPanChange = { panOffset = it },
                     onTransform = { newZoom, deltaRot, deltaTilt, latency ->
                         viewModel.updateMapTransform(
@@ -465,73 +471,103 @@ fun FullScreenMapViewer(
                 }
             }
 
-            // Configurable Quick-Access Floating Toolbar
+            // Configurable Quick-Access Floating Toolbar with pinned always-visible Exit button
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(palette.panelSurface.copy(alpha = 0.90f))
+                    .background(palette.panelSurface.copy(alpha = 0.92f))
                     .border(1.5.dp, palette.panelBorder, RoundedCornerShape(12.dp))
-                    .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 8.dp, vertical = 6.dp)
                     .testTag("fullscreen_quick_toolbar")
             ) {
-                uiState.quickToolbarTools.forEach { tool ->
-                    val (isActive, accent) = when (tool) {
-                        QuickToolbarTool.FULLSCREEN -> true to palette.normalGreen
-                        QuickToolbarTool.NORTH_UP -> (uiState.mapRotationDeg == 0f && uiState.mapTiltDeg == 0f) to palette.normalGreen
-                        QuickToolbarTool.SPLIT_VIEW -> (uiState.mapSplitMode != MapSplitMode.SINGLE) to palette.advisoryBlue
-                        QuickToolbarTool.GPS_TRACK -> uiState.isGpsLiveEnabled to palette.normalGreen
-                        QuickToolbarTool.ADSB_TRAFFIC -> uiState.adsbEnabled to palette.warningAmber
-                        QuickToolbarTool.ADD_WAYPOINT -> false to palette.normalGreen
-                        QuickToolbarTool.PIP_MODE -> uiState.isInAppMiniPipActive to palette.advisoryBlue
-                        QuickToolbarTool.LEGEND -> uiState.showMapLegendSheet to palette.warningAmber
-                        QuickToolbarTool.VISUAL_MODE -> true to palette.advisoryBlue
-                    }
-                    Box(
-                        modifier = Modifier
-                            .heightIn(min = 38.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (isActive) accent.copy(alpha = 0.22f) else palette.canvasBackground)
-                            .border(1.dp, accent, RoundedCornerShape(8.dp))
-                            .clickable {
-                                when (tool) {
-                                    QuickToolbarTool.FULLSCREEN -> viewModel.closeFullScreenMap()
-                                    QuickToolbarTool.NORTH_UP -> {
-                                        viewModel.resetMapToNorthUp()
-                                        panOffset = Offset.Zero
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .heightIn(min = 38.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(palette.criticalRed)
+                        .clickable { viewModel.closeFullScreenMap() }
+                        .padding(horizontal = 10.dp, vertical = 7.dp)
+                        .testTag("fullscreen_bottom_exit_btn")
+                ) {
+                    Text(
+                        text = "Exit",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = contrastContentColor(palette.criticalRed),
+                        fontFamily = JetBrainsMonoFontFamily
+                    )
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState())
+                ) {
+                    uiState.quickToolbarTools.forEach { tool ->
+                        val (isActive, accent) = when (tool) {
+                            QuickToolbarTool.FULLSCREEN -> true to palette.normalGreen
+                            QuickToolbarTool.NORTH_UP -> (uiState.mapRotationDeg == 0f && uiState.mapTiltDeg == 0f) to palette.normalGreen
+                            QuickToolbarTool.SPLIT_VIEW -> (uiState.mapSplitMode != MapSplitMode.SINGLE) to palette.advisoryBlue
+                            QuickToolbarTool.GPS_TRACK -> uiState.isGpsLiveEnabled to palette.normalGreen
+                            QuickToolbarTool.ADSB_TRAFFIC -> uiState.adsbEnabled to palette.warningAmber
+                            QuickToolbarTool.ADD_WAYPOINT -> false to palette.normalGreen
+                            QuickToolbarTool.PIP_MODE -> uiState.isInAppMiniPipActive to palette.advisoryBlue
+                            QuickToolbarTool.LEGEND -> uiState.showMapLegendSheet to palette.warningAmber
+                            QuickToolbarTool.VISUAL_MODE -> true to palette.advisoryBlue
+                        }
+                        Box(
+                            modifier = Modifier
+                                .heightIn(min = 38.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isActive) accent.copy(alpha = 0.22f) else palette.canvasBackground)
+                                .border(1.dp, accent, RoundedCornerShape(8.dp))
+                                .clickable {
+                                    when (tool) {
+                                        QuickToolbarTool.FULLSCREEN -> viewModel.closeFullScreenMap()
+                                        QuickToolbarTool.NORTH_UP -> {
+                                            viewModel.resetMapToNorthUp()
+                                            panOffset = Offset.Zero
+                                        }
+                                        QuickToolbarTool.SPLIT_VIEW -> viewModel.cycleMapSplitMode()
+                                        QuickToolbarTool.GPS_TRACK -> {
+                                            if (uiState.isGpsLiveEnabled) viewModel.stopLiveGpsTracking()
+                                            else viewModel.startLiveGpsTracking()
+                                        }
+                                        QuickToolbarTool.ADSB_TRAFFIC -> viewModel.toggleAdsbTraffic()
+                                        QuickToolbarTool.ADD_WAYPOINT -> {
+                                            viewModel.addUserWaypoint(
+                                                label = "WP-${uiState.userWaypoints.size + 1}",
+                                                lat = uiState.gpsTelemetry.latitude,
+                                                lon = uiState.gpsTelemetry.longitude,
+                                                altitudeFt = 2500
+                                            )
+                                        }
+                                        QuickToolbarTool.PIP_MODE -> viewModel.toggleInAppMiniPip(true)
+                                        QuickToolbarTool.LEGEND -> viewModel.toggleMapLegendSheet(true)
+                                        QuickToolbarTool.VISUAL_MODE -> viewModel.cycleMapVisualThemeMode()
                                     }
-                                    QuickToolbarTool.SPLIT_VIEW -> viewModel.cycleMapSplitMode()
-                                    QuickToolbarTool.GPS_TRACK -> {
-                                        if (uiState.isGpsLiveEnabled) viewModel.stopLiveGpsTracking()
-                                        else viewModel.startLiveGpsTracking()
-                                    }
-                                    QuickToolbarTool.ADSB_TRAFFIC -> viewModel.toggleAdsbTraffic()
-                                    QuickToolbarTool.ADD_WAYPOINT -> {
-                                        viewModel.addUserWaypoint(
-                                            label = "WP-${uiState.userWaypoints.size + 1}",
-                                            lat = uiState.gpsTelemetry.latitude,
-                                            lon = uiState.gpsTelemetry.longitude,
-                                            altitudeFt = 2500
-                                        )
-                                    }
-                                    QuickToolbarTool.PIP_MODE -> viewModel.toggleInAppMiniPip(true)
-                                    QuickToolbarTool.LEGEND -> viewModel.toggleMapLegendSheet(true)
-                                    QuickToolbarTool.VISUAL_MODE -> viewModel.cycleMapVisualThemeMode()
                                 }
-                            }
-                            .padding(horizontal = 10.dp, vertical = 7.dp)
-                            .testTag("quick_tool_${tool.id}")
-                    ) {
-                        Text(
-                            text = if (tool == QuickToolbarTool.VISUAL_MODE) uiState.mapVisualThemeMode.shortLabel else tool.shortLabel,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = palette.textPrimary,
-                            fontFamily = JetBrainsMonoFontFamily
-                        )
+                                .padding(horizontal = 10.dp, vertical = 7.dp)
+                                .testTag("quick_tool_${tool.id}")
+                        ) {
+                            Text(
+                                text = when (tool) {
+                                    QuickToolbarTool.VISUAL_MODE -> uiState.mapVisualThemeMode.shortLabel
+                                    QuickToolbarTool.FULLSCREEN -> "Exit Full"
+                                    else -> tool.shortLabel
+                                },
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = palette.textPrimary,
+                                fontFamily = JetBrainsMonoFontFamily
+                            )
+                        }
                     }
                 }
                 IconButton(
@@ -682,6 +718,7 @@ private fun InteractiveMapViewportPane(
     panOffset: Offset,
     tiltGestureMode: Boolean,
     cameraDistPx: Float,
+    bottomHudClearanceDp: Dp = 74.dp,
     onPanChange: (Offset) -> Unit,
     onTransform: (newZoom: Float, deltaRot: Float, deltaTilt: Float, latencyMs: Long) -> Unit,
     modifier: Modifier = Modifier
@@ -812,7 +849,7 @@ private fun InteractiveMapViewportPane(
             .pointerInput(Unit) {
                 detectMapMultitouchGestures(
                     enableTilt = true,
-                    singleFingerTiltOverride = currentTiltMode,
+                    isSingleFingerTiltEnabled = { currentTiltMode },
                     allowSingleFingerPan = { true }
                 ) { zoomFactor, pan, rotationChange, tiltDelta ->
                     val t0 = System.currentTimeMillis()
@@ -1083,7 +1120,7 @@ private fun InteractiveMapViewportPane(
             verticalArrangement = Arrangement.spacedBy(4.dp),
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(start = 10.dp, bottom = if (uiState.mapSplitMode == MapSplitMode.SINGLE) 68.dp else 10.dp)
+                .padding(start = 10.dp, bottom = bottomHudClearanceDp)
         ) {
             if (showSatellite || showDoppler) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {

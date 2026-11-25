@@ -62,7 +62,7 @@ import kotlin.math.roundToInt
  */
 suspend fun PointerInputScope.detectMapMultitouchGestures(
     enableTilt: Boolean = false,
-    singleFingerTiltOverride: Boolean = false,
+    isSingleFingerTiltEnabled: () -> Boolean = { false },
     allowSingleFingerPan: () -> Boolean = { true },
     onTransform: (zoomChange: Float, panChange: Offset, rotationChangeDeg: Float, tiltDeltaDeg: Float) -> Unit
 ) {
@@ -121,7 +121,7 @@ suspend fun PointerInputScope.detectMapMultitouchGestures(
                         tiltDelta = -panChange.y * 0.18f
                         emittedPan = Offset.Zero
                     }
-                } else if (enableTilt && singleFingerTiltOverride && !isMultiTouch && abs(panChange.y) > abs(panChange.x)) {
+                } else if (enableTilt && isSingleFingerTiltEnabled() && !isMultiTouch && abs(panChange.y) > abs(panChange.x)) {
                     tiltDelta = -panChange.y * 0.15f
                     emittedPan = Offset.Zero
                 }
