@@ -660,3 +660,89 @@ object MapLayerRegistry {
         )
     )
 }
+
+// ---------------------------------------------------------------------------
+// 7. Fixed-Aspect-Ratio Satellite & Map Zoom Calibration (Zero Distortion)
+// ---------------------------------------------------------------------------
+
+enum class SatAspectCalibrationMode(
+    val id: String,
+    val label: String,
+    val shortLabel: String,
+    val description: String
+) {
+    FIT(
+        id = "fit",
+        label = "1:1 True Fit",
+        shortLabel = "1:1 Fit",
+        description = "Shows the entire satellite swath with locked 1:1 proportions and zero cropping."
+    ),
+    AUTO_AESTHETIC(
+        id = "auto_aesthetic",
+        label = "Calibrated Aesthetic",
+        shortLabel = "Auto Cal",
+        description = "Aspect-locked optical zoom calibrated to balance screen coverage and edge framing."
+    ),
+    UNIFORM_FILL(
+        id = "uniform_fill",
+        label = "Aspect-Locked Fill",
+        shortLabel = "Lock Fill",
+        description = "Uniformly zooms to fill 100% of the screen without stretching; drag to pan edges."
+    )
+}
+
+object AspectRatioCalibrationMath {
+    /**
+     * Computes a fixed-aspect-ratio stage (width, height) that fits cleanly inside the viewport
+     * with zero stretching (`stageW / stageH == targetAspectRatio`).
+     */
+    fun computeFixedAspectStagePx(
+        viewportWidthPx: Float,
+        viewportHeightPx: Float,
+        targetAspectRatio: Float
+    ): Pair<Float, Float> {
+        val safeW = viewportWidthPx.coerceAtLeast(1f)
+        val safeH = viewportHeightPx.coerceAtLeast(1f)
+        val safeAspect = targetAspectRatio.coerceIn(0.4f, 2.5f)
+        val viewportAspect = safeW / safeH
+        return if (viewportAspect > safeAspect) {
+            // Viewport is wider than stage -> height-bound
+            Pair(safeH * safeAspect, safeH)
+        } else {
+            // Viewport is taller than stage -> width-bound
+            Pair(safeW, safeW / safeAspect)
+        }
+    }
+
+    /**
+     * Computes uniform calibration scale (applied equally to X and Y so imagery NEVER stretches)
+     * based on the selected SatAspectCalibrationMode and fine calibration multiplier.
+     */
+    fun computeUniformCalibrationScale(
+        viewportWidthPx: Float,
+        viewportHeightPx: Float,
+        stageWidthPx: Float,
+        stageHeightPx: Float,
+        mode: SatAspectCalibrationMode,
+        calibrationMultiplier: Float = 1.0f
+    ): Float {
+        val safeStageW = stageWidthPx.coerceAtLeast(1f)
+        val safeStageH = stageHeightPx.coerceAtLeast(1f)
+        val fillScale = max(
+            viewportWidthPx.coerceAtLeast(1f) / safeStageW,
+            viewportHeightPx.coerceAtLeast(1f) / safeStageH
+        ).coerceAtLeast(1.0f)
+
+        val base = when (mode) {
+            SatAspectCalibrationMode.FIT -> 1.0f
+            SatAspectCalibrationMode.AUTO_AESTHETIC ->
+                if (fillScale > 1.05f) sqrt(fillScale).coerceIn(1.15f, 1.85f) else 1.0f
+            SatAspectCalibrationMode.UNIFORM_FILL -> fillScale
+        }
+        return (base * calibrationMultiplier.coerceIn(0.75f, 2.5f)).coerceIn(0.75f, 6.0f)
+    }
+
+    fun isWithinHawaiiBounds(lat: Double, lon: Double): Boolean =
+        lat in 18.4..22.6 && lon in -161.2..-154.4
+}
+

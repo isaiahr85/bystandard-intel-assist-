@@ -148,6 +148,11 @@ fun FullScreenMapViewer(
             .testTag("fullscreen_map_viewer")
     ) {
         val isWideLayout = maxWidth >= 600.dp
+        val showHawaiiVectors = !isSatCenterMode ||
+            AspectRatioCalibrationMath.isWithinHawaiiBounds(
+                uiState.customGibsTarget.latitude,
+                uiState.customGibsTarget.longitude
+            )
 
         // 1. Primary / Split-Screen Immersive Map Canvas Area (100% display coverage)
         if (uiState.mapSplitMode == MapSplitMode.SINGLE) {
@@ -159,8 +164,8 @@ fun FullScreenMapViewer(
                 showDoppler = if (isSatCenterMode) false else uiState.dopplerEnabled,
                 showAirspace = !isSatCenterMode,
                 showTerrain = uiState.terrainLayerEnabled,
-                showRoutes = true,
-                showAdsb = uiState.adsbEnabled,
+                showRoutes = showHawaiiVectors,
+                showAdsb = uiState.adsbEnabled && showHawaiiVectors,
                 satUrlOverride = if (isSatCenterMode) {
                     NasaGibsUrlBuilder.buildSnapshotUrl(
                         latitude = uiState.customGibsTarget.latitude,
@@ -340,7 +345,7 @@ fun FullScreenMapViewer(
                         fontFamily = JetBrainsMonoFontFamily
                     )
                     Text(
-                        text = "${uiState.mapVisualThemeMode.shortLabel} • ${uiState.mapPerfMetrics.lastGestureLatencyMs}ms • ${uiState.mapSplitMode.label}",
+                        text = "${uiState.satAspectCalibrationMode.shortLabel} ${String.format(Locale.US, "%.2fx", uiState.satZoomCalibrationFactor)} • ${uiState.mapPerfMetrics.lastGestureLatencyMs}ms • ${uiState.mapSplitMode.label}",
                         fontSize = 10.sp,
                         color = palette.advisoryBlue,
                         fontFamily = JetBrainsMonoFontFamily
@@ -420,6 +425,19 @@ fun FullScreenMapViewer(
                 filled = isTiltModeGesture,
                 onClick = { isTiltModeGesture = !isTiltModeGesture },
                 modifier = Modifier.testTag("fullscreen_tilt_toggle_btn")
+            )
+            FloatingHudIconButton(
+                icon = Icons.Default.AspectRatio,
+                contentDescription = "Cycle Fixed-Aspect Zoom Calibration",
+                accent = palette.classAColor,
+                filled = uiState.satAspectCalibrationMode != SatAspectCalibrationMode.FIT,
+                onClick = {
+                    val modes = SatAspectCalibrationMode.entries
+                    val next = modes[(uiState.satAspectCalibrationMode.ordinal + 1) % modes.size]
+                    viewModel.setSatAspectCalibrationMode(next)
+                    panOffset = Offset.Zero
+                },
+                modifier = Modifier.testTag("fullscreen_calibration_btn")
             )
         }
 
@@ -637,6 +655,61 @@ fun FullScreenMapViewer(
                         }
                     }
 
+                    // Fixed-Aspect-Ratio Satellite & Map Zoom Calibration (Zero Stretch)
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "ASPECT-LOCKED ZOOM CALIBRATION",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = palette.classAColor,
+                            fontFamily = JetBrainsMonoFontFamily
+                        )
+                        TextButton(
+                            onClick = {
+                                viewModel.resetSatCalibration()
+                                panOffset = Offset.Zero
+                            },
+                            modifier = Modifier.testTag("calibration_reset_btn")
+                        ) {
+                            Text("Reset", fontSize = 11.sp)
+                        }
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                    ) {
+                        SatAspectCalibrationMode.entries.forEach { calMode ->
+                            FilterChip(
+                                selected = uiState.satAspectCalibrationMode == calMode,
+                                onClick = {
+                                    viewModel.setSatAspectCalibrationMode(calMode)
+                                    panOffset = Offset.Zero
+                                },
+                                label = { Text(calMode.shortLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                modifier = Modifier.testTag("calibration_mode_${calMode.id}")
+                            )
+                        }
+                    }
+                    Text(
+                        text = "OPTICAL CALIBRATION SCALE (${String.format(Locale.US, "%.2fx", uiState.satZoomCalibrationFactor)} • 1:1 LOCKED)",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = palette.textSecondary,
+                        fontFamily = JetBrainsMonoFontFamily
+                    )
+                    Slider(
+                        value = uiState.satZoomCalibrationFactor,
+                        onValueChange = { viewModel.setSatZoomCalibrationFactor(it) },
+                        valueRange = 0.75f..2.50f,
+                        modifier = Modifier.testTag("calibration_factor_slider")
+                    )
+
                     // 3D Terrain Tilt & Rotation Sliders (complements multi-touch gestures)
                     Text(
                         text = "3D PITCH TILT (${uiState.mapTiltDeg.toInt()}°) & BEARING (${uiState.mapRotationDeg.toInt()}°)",
@@ -725,6 +798,7 @@ private fun InteractiveMapViewportPane(
 ) {
     val context = LocalContext.current
     val palette = LocalMapPalette.current
+    val density = LocalDensity.current
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
 
     val minLat = HawaiiAirspaceReference.MAP_MIN_LAT
@@ -741,6 +815,34 @@ private fun InteractiveMapViewportPane(
 
     val tileW = if (uiState.hdTileResolution) 1600 else 800
     val tileH = if (uiState.hdTileResolution) 1200 else 600
+    val targetStageAspect = tileW.toFloat() / tileH.toFloat()
+    val viewportW = viewportSize.width.toFloat().coerceAtLeast(1f)
+    val viewportH = viewportSize.height.toFloat().coerceAtLeast(1f)
+    val (stageW, stageH) = if (viewportSize.width > 0 && viewportSize.height > 0) {
+        AspectRatioCalibrationMath.computeFixedAspectStagePx(viewportW, viewportH, targetStageAspect)
+    } else {
+        Pair(viewportW, viewportH)
+    }
+    val calibrationScale = AspectRatioCalibrationMath.computeUniformCalibrationScale(
+        viewportWidthPx = viewportW,
+        viewportHeightPx = viewportH,
+        stageWidthPx = stageW,
+        stageHeightPx = stageH,
+        mode = uiState.satAspectCalibrationMode,
+        calibrationMultiplier = uiState.satZoomCalibrationFactor
+    )
+    val effectiveScale = (zoom * calibrationScale).coerceIn(0.75f, 10.0f)
+    val currentEffectiveScale by rememberUpdatedState(effectiveScale)
+    val currentStageW by rememberUpdatedState(stageW)
+    val currentStageH by rememberUpdatedState(stageH)
+    val currentCalibrationScale by rememberUpdatedState(calibrationScale)
+
+    val isHawaiiTarget = satUrlOverride == null ||
+        AspectRatioCalibrationMath.isWithinHawaiiBounds(
+            uiState.customGibsTarget.latitude,
+            uiState.customGibsTarget.longitude
+        )
+
     val activeSatDate = if (satUrlOverride != null) uiState.customGibsTarget.dateIso else uiState.airspaceSatDateIso
     val activeSatLayer = if (satUrlOverride != null) uiState.activeGibsLayer else uiState.airspaceSatLayer
 
@@ -752,12 +854,12 @@ private fun InteractiveMapViewportPane(
     }
     var satAutoStepCount by remember(satUrlOverride != null, activeSatLayer.id) { mutableStateOf(0) }
 
-    LaunchedEffect(zoom, viewportSize) {
-        if (zoom <= 1.02f) {
+    LaunchedEffect(effectiveScale, viewportSize, stageW, stageH) {
+        val maxPanX = ((stageW * effectiveScale - viewportW) / 2f).coerceAtLeast(0f)
+        val maxPanY = ((stageH * effectiveScale - viewportH) / 2f).coerceAtLeast(0f)
+        if (maxPanX <= 1f && maxPanY <= 1f) {
             onPanChange(Offset.Zero)
         } else {
-            val maxPanX = ((viewportSize.width * (zoom - 1f)) / 2f).coerceAtLeast(0f)
-            val maxPanY = ((viewportSize.height * (zoom - 1f)) / 2f).coerceAtLeast(0f)
             onPanChange(
                 Offset(
                     x = panOffset.x.coerceIn(-maxPanX, maxPanX),
@@ -807,6 +909,7 @@ private fun InteractiveMapViewportPane(
     }
 
     Box(
+        contentAlignment = Alignment.Center,
         modifier = modifier
             .background(palette.canvasBackground)
             .clip(RoundedCornerShape(0.dp))
@@ -820,27 +923,29 @@ private fun InteractiveMapViewportPane(
                     },
                     onTap = { tap ->
                         if (!showAirspace) return@detectTapGestures
-                        val w = size.width.toFloat().coerceAtLeast(1f)
-                        val h = size.height.toFloat().coerceAtLeast(1f)
-                        val cx = w / 2f
-                        val cy = h / 2f
-                        val dx = (tap.x - currentPan.x - cx) / currentZoom
-                        val dy = (tap.y - currentPan.y - cy) / currentZoom
+                        val vw = size.width.toFloat().coerceAtLeast(1f)
+                        val vh = size.height.toFloat().coerceAtLeast(1f)
+                        val sw = currentStageW.coerceAtLeast(1f)
+                        val sh = currentStageH.coerceAtLeast(1f)
+                        val cx = vw / 2f
+                        val cy = vh / 2f
+                        val dx = (tap.x - currentPan.x - cx) / currentEffectiveScale
+                        val dy = (tap.y - currentPan.y - cy) / currentEffectiveScale
                         val rad = Math.toRadians(-currentRotDeg.toDouble())
-                        val unrotX = (dx * cos(rad) - dy * sin(rad)).toFloat() + cx
-                        val unrotY = (dx * sin(rad) + dy * cos(rad)).toFloat() + cy
+                        val unrotX = (dx * cos(rad) - dy * sin(rad)).toFloat() + (sw / 2f)
+                        val unrotY = (dx * sin(rad) + dy * cos(rad)).toFloat() + (sh / 2f)
 
                         val visibleZones = HawaiiAirspaceClassificationsCatalog.staticZones.filter { z ->
                             currentEnabledClasses.contains(z.classification) &&
                                 currentAltBand.matchesAltitudeRange(z.floorFtMsl, z.ceilingFtMsl)
                         }
                         val matchedZone = visibleZones.minByOrNull { z ->
-                            val center = project(GeoPoint(z.centerLat, z.centerLon), w, h)
+                            val center = project(GeoPoint(z.centerLat, z.centerLon), sw, sh)
                             hypot(unrotX - center.x, unrotY - center.y)
                         }?.let { z ->
-                            val center = project(GeoPoint(z.centerLat, z.centerLon), w, h)
+                            val center = project(GeoPoint(z.centerLat, z.centerLon), sw, sh)
                             val distPx = hypot(unrotX - center.x, unrotY - center.y)
-                            if (distPx <= 140f / currentZoom) z else null
+                            if (distPx <= 140f / currentEffectiveScale) z else null
                         }
                         viewModel.selectAirspaceZone(matchedZone)
                     }
@@ -854,11 +959,14 @@ private fun InteractiveMapViewportPane(
                 ) { zoomFactor, pan, rotationChange, tiltDelta ->
                     val t0 = System.currentTimeMillis()
                     val nextZoom = (currentZoom * zoomFactor).coerceIn(1.0f, 8.0f)
-                    if (nextZoom <= 1.02f) {
+                    val nextEffective = (nextZoom * currentCalibrationScale).coerceIn(0.75f, 10.0f)
+                    val vw = viewportSize.width.toFloat().coerceAtLeast(1f)
+                    val vh = viewportSize.height.toFloat().coerceAtLeast(1f)
+                    val maxPanX = ((currentStageW * nextEffective - vw) / 2f).coerceAtLeast(0f)
+                    val maxPanY = ((currentStageH * nextEffective - vh) / 2f).coerceAtLeast(0f)
+                    if (maxPanX <= 1f && maxPanY <= 1f) {
                         onPanChange(Offset.Zero)
                     } else if (pan != Offset.Zero) {
-                        val maxPanX = ((viewportSize.width * (nextZoom - 1f)) / 1.4f).coerceAtLeast(0f)
-                        val maxPanY = ((viewportSize.height * (nextZoom - 1f)) / 1.4f).coerceAtLeast(0f)
                         onPanChange(
                             Offset(
                                 x = (currentPan.x + pan.x).coerceIn(-maxPanX, maxPanX),
@@ -875,18 +983,27 @@ private fun InteractiveMapViewportPane(
                 }
             }
     ) {
+        val stageModifier = if (viewportSize.width > 0 && viewportSize.height > 0) {
+            Modifier.size(
+                width = with(density) { stageW.toDp() },
+                height = with(density) { stageH.toDp() }
+            )
+        } else {
+            Modifier.fillMaxSize()
+        }
+
         Box(
-            modifier = Modifier
-                .fillMaxSize()
+            modifier = stageModifier
                 .graphicsLayer {
-                    scaleX = zoom
-                    scaleY = zoom
+                    scaleX = effectiveScale
+                    scaleY = effectiveScale
                     translationX = panOffset.x
                     translationY = panOffset.y
                     rotationZ = rotationDeg
                     rotationX = tiltDeg
                     cameraDistance = cameraDistPx
                 }
+                .testTag("fullscreen_aspect_stage")
         ) {
             if (showSatellite) {
                 SubcomposeAsyncImage(
@@ -896,7 +1013,7 @@ private fun InteractiveMapViewportPane(
                         referer = "https://worldview.earthdata.nasa.gov/"
                     ),
                     contentDescription = "Full-screen NASA GIBS Satellite Layer",
-                    contentScale = ContentScale.FillBounds,
+                    contentScale = ContentScale.Fit,
                     onState = { state ->
                         when (state) {
                             is AsyncImagePainter.State.Loading -> satStatus = "SYNC"
@@ -931,7 +1048,7 @@ private fun InteractiveMapViewportPane(
                         referer = "https://opengeo.ncep.noaa.gov/"
                     ),
                     contentDescription = "Full-screen NOAA NEXRAD Weather Layer",
-                    contentScale = ContentScale.FillBounds,
+                    contentScale = ContentScale.Fit,
                     onState = { state ->
                         when (state) {
                             is AsyncImagePainter.State.Loading -> dopplerStatus = "SYNC"
@@ -965,38 +1082,54 @@ private fun InteractiveMapViewportPane(
                         drawLine(palette.terrainContour.copy(alpha = 0.4f), Offset(gx, 0f), Offset(gx, h), 1f)
                         drawLine(palette.terrainContour.copy(alpha = 0.4f), Offset(0f, gy), Offset(w, gy), 1f)
                     }
-                    // Concentric elevation contours around Mauna Kea & Mauna Loa peaks
-                    listOf(
-                        GeoPoint(19.8207, -155.4681) to listOf(18f, 34f, 52f),
-                        GeoPoint(19.4795, -155.6025) to listOf(20f, 38f, 58f)
-                    ).forEach { (summit, radii) ->
-                        val c = project(summit, w, h)
-                        radii.forEach { r ->
-                            drawCircle(
-                                color = palette.terrainContour.copy(alpha = uiState.terrainOpacity),
-                                radius = r,
-                                center = c,
-                                style = Stroke(1.6f * sm, pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 4f)))
-                            )
+                    if (isHawaiiTarget) {
+                        // Concentric elevation contours around Mauna Kea & Mauna Loa peaks
+                        listOf(
+                            GeoPoint(19.8207, -155.4681) to listOf(18f, 34f, 52f),
+                            GeoPoint(19.4795, -155.6025) to listOf(20f, 38f, 58f)
+                        ).forEach { (summit, radii) ->
+                            val c = project(summit, w, h)
+                            radii.forEach { r ->
+                                drawCircle(
+                                    color = palette.terrainContour.copy(alpha = uiState.terrainOpacity),
+                                    radius = r,
+                                    center = c,
+                                    style = Stroke(1.6f * sm, pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 4f)))
+                                )
+                            }
                         }
                     }
                 }
 
-                // Island landmass & outline
-                val islandPath = Path().apply {
-                    HawaiiAirspaceReference.hawaiiIslandCoastline.forEachIndexed { idx, pt ->
-                        val o = project(pt, w, h)
-                        if (idx == 0) moveTo(o.x, o.y) else lineTo(o.x, o.y)
+                if (!isHawaiiTarget) {
+                    // Global EONET/GIBS target reticle + framing border (suppresses unrelated Hawaiʻi coastline/routes)
+                    val cx = w / 2f
+                    val cy = h / 2f
+                    drawCircle(
+                        color = palette.advisoryBlue.copy(alpha = 0.85f),
+                        radius = 28f,
+                        center = Offset(cx, cy),
+                        style = Stroke(2.0f * sm, pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f)))
+                    )
+                    drawLine(palette.advisoryBlue.copy(alpha = 0.8f), Offset(cx - 42f, cy), Offset(cx + 42f, cy), 1.6f * sm)
+                    drawLine(palette.advisoryBlue.copy(alpha = 0.8f), Offset(cx, cy - 42f), Offset(cx, cy + 42f), 1.6f * sm)
+                } else {
+                    // Island landmass & outline
+                    val islandPath = Path().apply {
+                        HawaiiAirspaceReference.hawaiiIslandCoastline.forEachIndexed { idx, pt ->
+                            val o = project(pt, w, h)
+                            if (idx == 0) moveTo(o.x, o.y) else lineTo(o.x, o.y)
+                        }
+                        close()
                     }
-                    close()
+                    if (!(showSatellite && satStatus == "LIVE")) {
+                        drawPath(islandPath, color = palette.landFill)
+                    }
+                    drawPath(islandPath, color = palette.landOutline, style = Stroke(width = 2.8f * sm))
                 }
-                if (!(showSatellite && satStatus == "LIVE")) {
-                    drawPath(islandPath, color = palette.landFill)
-                }
-                drawPath(islandPath, color = palette.landOutline, style = Stroke(width = 2.8f * sm))
 
                 // Airspace Classification Overlays (Class A / B / C / D / Restricted / TFR) filtered by Altitude Band
-                if (showAirspace) {
+                if (showAirspace && isHawaiiTarget) {
                     val zones = HawaiiAirspaceClassificationsCatalog.staticZones.filter { z ->
                         uiState.enabledAirspaceClasses.contains(z.classification) &&
                             uiState.airspaceAltitudeBand.matchesAltitudeRange(z.floorFtMsl, z.ceilingFtMsl)
@@ -1093,11 +1226,13 @@ private fun InteractiveMapViewportPane(
                     }
                 }
 
-                // Live GPS Position Marker
-                val gpsPos = project(GeoPoint(uiState.gpsTelemetry.latitude, uiState.gpsTelemetry.longitude), w, h)
-                drawCircle(palette.normalGreen.copy(alpha = 0.25f), radius = 18f, center = gpsPos)
-                drawCircle(palette.normalGreen, radius = 7f, center = gpsPos)
-                drawCircle(palette.textPrimary, radius = 7f, center = gpsPos, style = Stroke(2f))
+                // Live GPS Position Marker (only in Hawaiʻi geospatial view)
+                if (isHawaiiTarget) {
+                    val gpsPos = project(GeoPoint(uiState.gpsTelemetry.latitude, uiState.gpsTelemetry.longitude), w, h)
+                    drawCircle(palette.normalGreen.copy(alpha = 0.25f), radius = 18f, center = gpsPos)
+                    drawCircle(palette.normalGreen, radius = 7f, center = gpsPos)
+                    drawCircle(palette.textPrimary, radius = 7f, center = gpsPos, style = Stroke(2f))
+                }
 
                 // Live ADS-B Aircraft Vectors
                 if (showAdsb) {

@@ -2,8 +2,10 @@ package com.example.network
 
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.ResponseBody
@@ -429,7 +431,8 @@ class HawaiiAirspaceRepository(
     private val faaApi: FaaTfrApi = createDefaultFaaApi(),
     private val nwsApi: NwsAlertsApi = createDefaultNwsApi()
 ) {
-    suspend fun fetchSnapshot(): HawaiiAirspaceSnapshot = coroutineScope {
+    suspend fun fetchSnapshot(): HawaiiAirspaceSnapshot = withContext(Dispatchers.IO) {
+        coroutineScope {
         val wfsDeferred = async {
             runCatching {
                 val wfsUrl = "https://tfr.faa.gov/geoserver/TFR/ows" +
@@ -483,6 +486,7 @@ class HawaiiAirspaceRepository(
             tfrFeedError = faaErr,
             nwsFeedError = nwsErr
         )
+        }
     }
 
     companion object {

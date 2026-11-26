@@ -36,12 +36,14 @@ import kotlin.math.roundToInt
 
 class MapTileCacheManager(context: Context) {
 
-    private val appContext = context.applicationContext
-    private val cacheDir = File(appContext.cacheDir, "map_tile_cache")
-    private val httpCache = Cache(cacheDir, 64L * 1024L * 1024L) // 64 MB persistent tile cache
+    private val appContext = context.applicationContext ?: context
+    private val cacheDir = runCatching { File(appContext.cacheDir, "map_tile_cache") }.getOrNull()
+    private val httpCache = runCatching {
+        cacheDir?.let { Cache(it, 64L * 1024L * 1024L) }
+    }.getOrNull()
 
     val okHttpClient: OkHttpClient = OkHttpClient.Builder()
-        .cache(httpCache)
+        .apply { if (httpCache != null) cache(httpCache) }
         .connectTimeout(12, TimeUnit.SECONDS)
         .readTimeout(16, TimeUnit.SECONDS)
         .build()
@@ -53,17 +55,22 @@ class MapTileCacheManager(context: Context) {
                 .maxSizePercent(0.25)
                 .build()
         }
-        .diskCache {
-            DiskCache.Builder()
-                .directory(File(appContext.cacheDir, "coil_map_disk_cache"))
-                .maxSizeBytes(96L * 1024L * 1024L)
-                .build()
+        .apply {
+            val coilDir = runCatching { File(appContext.cacheDir, "coil_map_disk_cache") }.getOrNull()
+            if (coilDir != null) {
+                diskCache {
+                    DiskCache.Builder()
+                        .directory(coilDir)
+                        .maxSizeBytes(96L * 1024L * 1024L)
+                        .build()
+                }
+            }
         }
         .respectCacheHeaders(false)
         .build()
 
     fun getCacheSizeKb(): Long {
-        val httpBytes = runCatching { httpCache.size() }.getOrDefault(0L)
+        val httpBytes = runCatching { httpCache?.size() ?: 0L }.getOrDefault(0L)
         val coilBytes = runCatching { imageLoader.diskCache?.size ?: 0L }.getOrDefault(0L)
         return ((httpBytes + coilBytes) / 1024L).coerceAtLeast(0L)
     }
@@ -333,22 +340,23 @@ data class PersistedMapPreferences(
 }
 
 class MapPreferencesStore(context: Context) {
-    private val prefs = context.applicationContext.getSharedPreferences(
-        "veriscope_map_prefs_v1",
-        Context.MODE_PRIVATE
-    )
+    private val appContext = context.applicationContext ?: context
+    private val prefs = runCatching {
+        appContext.getSharedPreferences("veriscope_map_prefs_v1", Context.MODE_PRIVATE)
+    }.getOrNull()
 
-    fun load(): PersistedMapPreferences {
-        val modeId = prefs.getString("visual_mode", MapVisualThemeMode.NIGHT.id)
+    fun load(): PersistedMapPreferences = runCatching {
+        val p = prefs ?: return@runCatching PersistedMapPreferences()
+        val modeId = runCatching { p.getString("visual_mode", MapVisualThemeMode.NIGHT.id) }.getOrNull()
         val visualMode = MapVisualThemeMode.entries.find { it.id == modeId } ?: MapVisualThemeMode.NIGHT
 
-        val splitId = prefs.getString("split_mode", MapSplitMode.SINGLE.id)
+        val splitId = runCatching { p.getString("split_mode", MapSplitMode.SINGLE.id) }.getOrNull()
         val splitMode = MapSplitMode.entries.find { it.id == splitId } ?: MapSplitMode.SINGLE
 
-        val altId = prefs.getString("altitude_band", AirspaceAltitudeBand.ALL.id)
+        val altId = runCatching { p.getString("altitude_band", AirspaceAltitudeBand.ALL.id) }.getOrNull()
         val altBand = AirspaceAltitudeBand.entries.find { it.id == altId } ?: AirspaceAltitudeBand.ALL
 
-        val quickRaw = prefs.getString("quick_tools", null)
+        val quickRaw = runCatching { p.getString("quick_tools", null) }.getOrNull()
         val quickTools = if (quickRaw.isNullOrBlank()) {
             PersistedMapPreferences().quickTools
         } else {
@@ -357,58 +365,61 @@ class MapPreferencesStore(context: Context) {
                 .ifEmpty { PersistedMapPreferences().quickTools }
         }
 
-        val offlineIds = prefs.getStringSet("offline_sectors", emptySet())?.toSet() ?: emptySet()
-        val wpJson = prefs.getString("waypoints_json", null)
+        val offlineIds = runCatching { p.getStringSet("offline_sectors", emptySet())?.toSet() }.getOrNull() ?: emptySet()
+        val wpJson = runCatching { p.getString("waypoints_json", null) }.getOrNull()
         val waypoints = if (wpJson.isNullOrBlank()) {
             PersistedMapPreferences.defaultWaypoints()
         } else {
             decodeWaypoints(wpJson)
         }
 
-        return PersistedMapPreferences(
+        PersistedMapPreferences(
             visualThemeMode = visualMode,
             splitMode = splitMode,
             altitudeBand = altBand,
-            dopplerOpacity = prefs.getFloat("doppler_opacity", 0.82f).coerceIn(0.2f, 1.0f),
-            satOpacity = prefs.getFloat("sat_opacity", 0.72f).coerceIn(0.25f, 1.0f),
-            airspaceOpacity = prefs.getFloat("airspace_opacity", 0.85f).coerceIn(0.2f, 1.0f),
-            hdTileResolution = prefs.getBoolean("hd_tile_res", true),
+            dopplerOpacity = runCatching { p.getFloat("doppler_opacity", 0.82f) }.getOrDefault(0.82f).coerceIn(0.2f, 1.0f),
+            satOpacity = runCatching { p.getFloat("sat_opacity", 0.72f) }.getOrDefault(0.72f).coerceIn(0.25f, 1.0f),
+            airspaceOpacity = runCatching { p.getFloat("airspace_opacity", 0.85f) }.getOrDefault(0.85f).coerceIn(0.2f, 1.0f),
+            hdTileResolution = runCatching { p.getBoolean("hd_tile_res", true) }.getOrDefault(true),
             quickTools = quickTools,
             offlineSectorIds = offlineIds,
             waypoints = waypoints
         )
+    }.getOrElse {
+        runCatching { prefs?.edit()?.clear()?.apply() }
+        PersistedMapPreferences()
     }
 
     fun saveVisualMode(mode: MapVisualThemeMode) {
-        prefs.edit().putString("visual_mode", mode.id).apply()
+        prefs?.edit()?.putString("visual_mode", mode.id)?.apply()
     }
 
     fun saveSplitMode(mode: MapSplitMode) {
-        prefs.edit().putString("split_mode", mode.id).apply()
+        prefs?.edit()?.putString("split_mode", mode.id)?.apply()
     }
 
     fun saveAltitudeBand(band: AirspaceAltitudeBand) {
-        prefs.edit().putString("altitude_band", band.id).apply()
+        prefs?.edit()?.putString("altitude_band", band.id)?.apply()
     }
 
     fun saveOpacities(sat: Float, doppler: Float, airspace: Float) {
-        prefs.edit()
-            .putFloat("sat_opacity", sat)
-            .putFloat("doppler_opacity", doppler)
-            .putFloat("airspace_opacity", airspace)
-            .apply()
+        prefs?.edit()
+            ?.putFloat("sat_opacity", sat)
+            ?.putFloat("doppler_opacity", doppler)
+            ?.putFloat("airspace_opacity", airspace)
+            ?.apply()
     }
 
     fun saveHdResolution(enabled: Boolean) {
-        prefs.edit().putBoolean("hd_tile_res", enabled).apply()
+        prefs?.edit()?.putBoolean("hd_tile_res", enabled)?.apply()
     }
 
     fun saveQuickTools(tools: List<QuickToolbarTool>) {
-        prefs.edit().putString("quick_tools", tools.joinToString(",") { it.id }).apply()
+        prefs?.edit()?.putString("quick_tools", tools.joinToString(",") { it.id })?.apply()
     }
 
     fun saveOfflineSectors(ids: Set<String>) {
-        prefs.edit().putStringSet("offline_sectors", ids).apply()
+        prefs?.edit()?.putStringSet("offline_sectors", ids)?.apply()
     }
 
     fun saveWaypoints(waypoints: List<UserWaypoint>) {
@@ -425,7 +436,7 @@ class MapPreferencesStore(context: Context) {
                 }
             )
         }
-        prefs.edit().putString("waypoints_json", arr.toString()).apply()
+        prefs?.edit()?.putString("waypoints_json", arr.toString())?.apply()
     }
 
     private fun decodeWaypoints(json: String): List<UserWaypoint> = runCatching {

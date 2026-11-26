@@ -83,26 +83,44 @@ val LocalAccessibilityAudio = compositionLocalOf { AccessibilityAudioUiBridge() 
  * On-device Android TextToSpeech manager with sentence chunking, live spoken-chunk tracking,
  * speech rate control, and safe fallback behavior when running in headless JVM/Robolectric tests.
  */
-class AccessibilityAudioManager(context: Context) {
+class AccessibilityAudioManager(
+    context: Context,
+    autoInitialize: Boolean = false
+) {
 
     internal data class TextChunk(
         val text: String,
         val range: IntRange
     )
 
-    private val appContext = context.applicationContext
+    private val appContext = context.applicationContext ?: context
     private val _state = MutableStateFlow(AudioPlaybackState())
     val state: StateFlow<AudioPlaybackState> = _state.asStateFlow()
 
+    @Volatile
     private var tts: TextToSpeech? = null
+    @Volatile
+    private var ttsInitialized: Boolean = false
+    @Volatile
     private var currentChunks: List<TextChunk> = emptyList()
+    @Volatile
     private var sessionNonce: Long = 0L
 
     init {
-        initializeTtsEngine()
+        if (autoInitialize) {
+            initializeTtsEngine()
+        }
+    }
+
+    fun ensureInitialized() {
+        if (!ttsInitialized) {
+            initializeTtsEngine()
+        }
     }
 
     private fun initializeTtsEngine() {
+        if (ttsInitialized) return
+        ttsInitialized = true
         runCatching {
             var created: TextToSpeech? = null
             created = TextToSpeech(appContext) { status ->
@@ -200,6 +218,7 @@ class AccessibilityAudioManager(context: Context) {
     }
 
     fun playOrToggle(sourceId: String, title: String, rawText: String) {
+        ensureInitialized()
         val cleanText = rawText.trim().replace(Regex("\\s+"), " ")
         if (cleanText.isEmpty()) {
             _state.update {

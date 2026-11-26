@@ -2,15 +2,21 @@ package com.example.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.bystander.BystanderPortalUiState
+import com.example.bystander.BystanderReferralCoordinator
+import com.example.bystander.BystanderSideMenuOption
 import com.example.data.*
 import com.example.model.*
 import com.example.network.*
 import com.example.tools.*
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -36,7 +42,8 @@ enum class IntelSubMode(val label: String) {
     CASEBOOK("Casebook"),
     AI_VECTOR("AI Vector"),
     NARRATIVE_OPS("FB / TG Ops"),
-    CBRN_HAZARD("CBRN Hazards")
+    CBRN_HAZARD("CBRN Hazards"),
+    CIVIC_SYSTEM("Civic AI")
 }
 
 enum class FullScreenMapDomain {
@@ -224,37 +231,113 @@ data class ForensicUiState(
     val hdTileResolution: Boolean = true,
     val externalDisplayCount: Int = 0,
     val mapPerfMetrics: MapPerformanceMetrics = MapPerformanceMetrics(),
-    val registeredExternalLayers: List<MapOverlayLayerDescriptor> = MapLayerRegistry.defaultExternalLayers
+    val registeredExternalLayers: List<MapOverlayLayerDescriptor> = MapLayerRegistry.defaultExternalLayers,
+    // Startup Lifecycle & Satellite Aspect Calibration
+    val startupInitCompleted: Boolean = false,
+    val startupDiagnosticNote: String? = null,
+    val satAspectCalibrationMode: SatAspectCalibrationMode = SatAspectCalibrationMode.AUTO_AESTHETIC,
+    val satZoomCalibrationFactor: Float = 1.0f,
+    // VeriScope BTAM Gateway & U.S. Secret Service NTAC Workflow
+    val btamSessionUnlocked: Boolean = false,
+    val selectedBtamRole: BtamOperationalRole? = null,
+    val btamAffiliationPathway: BtamAffiliationPathway = BtamAffiliationPathway.AFFILIATED,
+    val btamAffiliationOrgName: String = "",
+    val btamGatewayError: String? = null,
+    val btamWorkspaceModalOpen: Boolean = false,
+    val btamBystanderStage: BtamBystanderStage = BtamBystanderStage.STAGE_1_LIFE_SAFETY,
+    val btamLifeSafetyImminentThreat: Boolean? = null,
+    val btamSelectedIndicators: Set<NtacIndicatorCategory> = emptySet(),
+    val btamLeakageDraft: String = "",
+    val btamGrievanceDraft: String = "",
+    val btamProbingDraft: String = "",
+    val btamContextArtifactsDraft: String = "",
+    val btamObsDateTimeLocDraft: String = "",
+    val btamWitnessNoteDraft: String = "",
+    val btamAntiProfilingAlert: String? = null,
+    val btamLatestIssuedToken: String? = null,
+    val btamTokenLookupQuery: String = "",
+    val btamTokenLookupResult: BtamCaseSubmission? = null,
+    val btamTokenLookupMessage: String? = null,
+    val btamBystanderFollowUpDraft: String = "",
+    val btamSubmissions: List<BtamCaseSubmission> = emptyList(),
+    val btamPiiAuditLogs: List<BtamPiiAuditLogEntry> = emptyList(),
+    val btamSelectedQueueToken: String? = null,
+    val btamInvestigatorQuestionDraft: String = "",
+    val btamShow911ConfirmDialog: Boolean = false,
+    val btam911StatusNote: String? = null,
+    val btamUserAgreementAccepted: Boolean = false,
+    val btamPolicyDialogOpen: Boolean = false,
+    val btamApiDirectoryOpen: Boolean = false,
+    val bystanderPortalOpen: Boolean = false
 )
 
 class ForensicViewModel(
-    private val nasaFeedRepository: NasaSatFeedRepository = NasaSatFeedRepository(),
-    private val hawaiiAirspaceRepository: HawaiiAirspaceRepository = HawaiiAirspaceRepository(),
-    private val hawaiiWebcamsRepository: HawaiiWebcamsRepository = HawaiiWebcamsRepository(),
-    private val narrativeAiRepository: NarrativeAiRepository = SampleNarrativeAiRepository(),
-    private val socialDispatchRepository: SocialDispatchRepository = SocialDispatchRepository(),
-    private val openSkyAdsbRepository: OpenSkyAdsbRepository = OpenSkyAdsbRepository()
+    nasaFeedRepositoryFactory: () -> NasaSatFeedRepository = { NasaSatFeedRepository() },
+    hawaiiAirspaceRepositoryFactory: () -> HawaiiAirspaceRepository = { HawaiiAirspaceRepository() },
+    hawaiiWebcamsRepositoryFactory: () -> HawaiiWebcamsRepository = { HawaiiWebcamsRepository() },
+    narrativeAiRepositoryFactory: () -> NarrativeAiRepository = { SampleNarrativeAiRepository() },
+    socialDispatchRepositoryFactory: () -> SocialDispatchRepository = { SocialDispatchRepository() },
+    openSkyAdsbRepositoryFactory: () -> OpenSkyAdsbRepository = { OpenSkyAdsbRepository() }
 ) : ViewModel() {
 
+    private val nasaFeedRepository: NasaSatFeedRepository by lazy(nasaFeedRepositoryFactory)
+    private val hawaiiAirspaceRepository: HawaiiAirspaceRepository by lazy(hawaiiAirspaceRepositoryFactory)
+    private val hawaiiWebcamsRepository: HawaiiWebcamsRepository by lazy(hawaiiWebcamsRepositoryFactory)
+    private val narrativeAiRepository: NarrativeAiRepository by lazy(narrativeAiRepositoryFactory)
+    private val socialDispatchRepository: SocialDispatchRepository by lazy(socialDispatchRepositoryFactory)
+    private val openSkyAdsbRepository: OpenSkyAdsbRepository by lazy(openSkyAdsbRepositoryFactory)
+
+    @Volatile
     private var prefsStore: MapPreferencesStore? = null
+    @Volatile
     private var tileCacheManager: MapTileCacheManager? = null
+    @Volatile
     private var locationTracker: DeviceLocationTracker? = null
     private var lastAutoPrefetchMs: Long = 0L
+    @Volatile
+    private var startupWarmupStarted: Boolean = false
+
+    private val startupExceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        _uiState.update {
+            it.copy(
+                startupInitCompleted = true,
+                startupDiagnosticNote = "Recovered from background init issue: ${throwable.localizedMessage ?: throwable.javaClass.simpleName}"
+            )
+        }
+    }
 
     private val _uiState = MutableStateFlow(ForensicUiState())
     val uiState: StateFlow<ForensicUiState> = _uiState.asStateFlow()
 
-    init {
-        _uiState.update {
-            it.copy(
-                narrativeFbConfigured = socialDispatchRepository.isFacebookConfigured(),
-                narrativeTgConfigured = socialDispatchRepository.isTelegramConfigured()
-            )
+    val civicCoordinator: com.example.civic.CivicStateCoordinator = com.example.civic.CivicStateCoordinator()
+    val civicState: StateFlow<com.example.civic.CivicUiState> = civicCoordinator.state
+
+    val bystanderReferralCoordinator: BystanderReferralCoordinator = BystanderReferralCoordinator()
+    val bystanderPortalState: StateFlow<BystanderPortalUiState> = bystanderReferralCoordinator.state
+
+    fun ensureStartupWarmup() {
+        if (startupWarmupStarted) return
+        startupWarmupStarted = true
+        viewModelScope.launch(startupExceptionHandler) {
+            val (fbOk, tgOk) = withContext(Dispatchers.IO) {
+                runCatching {
+                    Pair(
+                        socialDispatchRepository.isFacebookConfigured(),
+                        socialDispatchRepository.isTelegramConfigured()
+                    )
+                }.getOrDefault(Pair(false, false))
+            }
+            _uiState.update {
+                it.copy(
+                    narrativeFbConfigured = fbOk,
+                    narrativeTgConfigured = tgOk
+                )
+            }
+            refreshNasaFeed()
+            refreshHawaiiAirspace()
+            refreshHawaiiWebcams()
+            seedInitialNarrativeSignal()
         }
-        refreshNasaFeed()
-        refreshHawaiiAirspace()
-        refreshHawaiiWebcams()
-        seedInitialNarrativeSignal()
     }
 
     fun selectTab(tab: NavigationTab) {
@@ -1620,45 +1703,124 @@ class ForensicViewModel(
     // Mapping, Airspace, GPS/ADS-B, Tile Cache & Persistence Controls
     // -----------------------------------------------------------------------
 
-    fun attachRuntimeServices(context: android.content.Context): MapTileCacheManager {
-        val manager = tileCacheManager ?: MapTileCacheManager(context).also { tileCacheManager = it }
-        if (prefsStore == null) {
-            val store = MapPreferencesStore(context)
-            prefsStore = store
-            val saved = store.load()
-            val tracker = DeviceLocationTracker(context)
-            locationTracker = tracker
-            val displays = tracker.countExternalDisplays()
-            val hasLocPerm = tracker.hasLocationPermission()
-            _uiState.update { state ->
-                val recalc = NavigationRouteEngine.recalculateRoute(
-                    state.gpsTelemetry.latitude,
-                    state.gpsTelemetry.longitude,
-                    state.gpsTelemetry.speedKts.coerceAtLeast(110.0),
-                    saved.waypoints
-                )
-                state.copy(
-                    mapVisualThemeMode = saved.visualThemeMode,
-                    mapSplitMode = saved.splitMode,
-                    airspaceAltitudeBand = saved.altitudeBand,
-                    dopplerOpacity = saved.dopplerOpacity,
-                    airspaceSatOpacity = saved.satOpacity,
-                    airspaceOpacity = saved.airspaceOpacity,
-                    hdTileResolution = saved.hdTileResolution,
-                    quickToolbarTools = saved.quickTools,
-                    offlineSectorsCached = saved.offlineSectorIds,
-                    userWaypoints = saved.waypoints,
-                    routeSummary = recalc,
-                    gpsPermissionGranted = hasLocPerm,
-                    externalDisplayCount = displays,
-                    tileCacheSizeKb = manager.getCacheSizeKb(),
-                    mapPerfMetrics = state.mapPerfMetrics.copy(
-                        tileResolutionLabel = if (saved.hdTileResolution) "1600×1200 HD" else "960×620 Std"
-                    )
-                )
+    /**
+     * Non-blocking startup hydration executed from LaunchedEffect after frame 1 renders.
+     * Safely isolates any storage, preference, Coil, or system service error so the app never crashes on boot.
+     */
+    suspend fun hydrateRuntimeServicesAsync(context: android.content.Context): MapTileCacheManager? {
+        val appContext = context.applicationContext ?: context
+        val result = withContext(Dispatchers.IO) {
+            runCatching {
+                val manager = tileCacheManager ?: MapTileCacheManager(appContext).also { tileCacheManager = it }
+                val store = prefsStore ?: MapPreferencesStore(appContext).also { prefsStore = it }
+                val saved = store.load()
+                val tracker = locationTracker ?: DeviceLocationTracker(appContext).also { locationTracker = it }
+                val displays = runCatching { tracker.countExternalDisplays() }.getOrDefault(0)
+                val hasLocPerm = runCatching { tracker.hasLocationPermission() }.getOrDefault(false)
+                val cacheKb = runCatching { manager.getCacheSizeKb() }.getOrDefault(0L)
+                Triple(manager, saved, Triple(displays, hasLocPerm, cacheKb))
             }
         }
-        return manager
+        return result.fold(
+            onSuccess = { (manager, saved, telemetry) ->
+                val (displays, hasLocPerm, cacheKb) = telemetry
+                _uiState.update { state ->
+                    val recalc = NavigationRouteEngine.recalculateRoute(
+                        state.gpsTelemetry.latitude,
+                        state.gpsTelemetry.longitude,
+                        state.gpsTelemetry.speedKts.coerceAtLeast(110.0),
+                        saved.waypoints
+                    )
+                    state.copy(
+                        mapVisualThemeMode = saved.visualThemeMode,
+                        mapSplitMode = saved.splitMode,
+                        airspaceAltitudeBand = saved.altitudeBand,
+                        dopplerOpacity = saved.dopplerOpacity,
+                        airspaceSatOpacity = saved.satOpacity,
+                        airspaceOpacity = saved.airspaceOpacity,
+                        hdTileResolution = saved.hdTileResolution,
+                        quickToolbarTools = saved.quickTools,
+                        offlineSectorsCached = saved.offlineSectorIds,
+                        userWaypoints = saved.waypoints,
+                        routeSummary = recalc,
+                        gpsPermissionGranted = hasLocPerm,
+                        externalDisplayCount = displays,
+                        tileCacheSizeKb = cacheKb,
+                        startupInitCompleted = true,
+                        mapPerfMetrics = state.mapPerfMetrics.copy(
+                            tileResolutionLabel = if (saved.hdTileResolution) "1600×1200 HD" else "960×620 Std"
+                        )
+                    )
+                }
+                ensureStartupWarmup()
+                manager
+            },
+            onFailure = { err ->
+                _uiState.update {
+                    it.copy(
+                        startupInitCompleted = true,
+                        startupDiagnosticNote = "Safe default config active (${err.localizedMessage ?: err.javaClass.simpleName})"
+                    )
+                }
+                ensureStartupWarmup()
+                null
+            }
+        )
+    }
+
+    fun attachRuntimeServices(context: android.content.Context): MapTileCacheManager? {
+        val appContext = context.applicationContext ?: context
+        val outcome = runCatching {
+            val manager = tileCacheManager ?: MapTileCacheManager(appContext).also { tileCacheManager = it }
+            if (prefsStore == null) {
+                val store = MapPreferencesStore(appContext)
+                prefsStore = store
+                val saved = store.load()
+                val tracker = DeviceLocationTracker(appContext)
+                locationTracker = tracker
+                val displays = runCatching { tracker.countExternalDisplays() }.getOrDefault(0)
+                val hasLocPerm = runCatching { tracker.hasLocationPermission() }.getOrDefault(false)
+                val cacheKb = runCatching { manager.getCacheSizeKb() }.getOrDefault(0L)
+                _uiState.update { state ->
+                    val recalc = NavigationRouteEngine.recalculateRoute(
+                        state.gpsTelemetry.latitude,
+                        state.gpsTelemetry.longitude,
+                        state.gpsTelemetry.speedKts.coerceAtLeast(110.0),
+                        saved.waypoints
+                    )
+                    state.copy(
+                        mapVisualThemeMode = saved.visualThemeMode,
+                        mapSplitMode = saved.splitMode,
+                        airspaceAltitudeBand = saved.altitudeBand,
+                        dopplerOpacity = saved.dopplerOpacity,
+                        airspaceSatOpacity = saved.satOpacity,
+                        airspaceOpacity = saved.airspaceOpacity,
+                        hdTileResolution = saved.hdTileResolution,
+                        quickToolbarTools = saved.quickTools,
+                        offlineSectorsCached = saved.offlineSectorIds,
+                        userWaypoints = saved.waypoints,
+                        routeSummary = recalc,
+                        gpsPermissionGranted = hasLocPerm,
+                        externalDisplayCount = displays,
+                        tileCacheSizeKb = cacheKb,
+                        startupInitCompleted = true,
+                        mapPerfMetrics = state.mapPerfMetrics.copy(
+                            tileResolutionLabel = if (saved.hdTileResolution) "1600×1200 HD" else "960×620 Std"
+                        )
+                    )
+                }
+            }
+            manager
+        }
+        return outcome.getOrElse { err ->
+            _uiState.update {
+                it.copy(
+                    startupInitCompleted = true,
+                    startupDiagnosticNote = "Runtime service fallback: ${err.localizedMessage ?: err.javaClass.simpleName}"
+                )
+            }
+            null
+        }
     }
 
     fun openFullScreenMap(domain: FullScreenMapDomain) {
@@ -2036,6 +2198,438 @@ class ForensicViewModel(
                 registeredExternalLayers = state.registeredExternalLayers.map {
                     if (it.id == layerId) it.copy(enabled = !it.enabled) else it
                 }
+            )
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Satellite Fixed-Aspect Zoom Calibration Controls
+    // -----------------------------------------------------------------------
+
+    fun setSatAspectCalibrationMode(mode: SatAspectCalibrationMode) {
+        _uiState.update {
+            it.copy(
+                satAspectCalibrationMode = mode,
+                satZoomCalibrationFactor = 1.0f
+            )
+        }
+    }
+
+    fun setSatZoomCalibrationFactor(factor: Float) {
+        _uiState.update { it.copy(satZoomCalibrationFactor = factor.coerceIn(0.75f, 2.50f)) }
+    }
+
+    fun resetSatCalibration() {
+        _uiState.update {
+            it.copy(
+                satAspectCalibrationMode = SatAspectCalibrationMode.AUTO_AESTHETIC,
+                satZoomCalibrationFactor = 1.0f,
+                satVisualZoom = 1.0f
+            )
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // VeriScope BTAM Gateway, 5-Stage NTAC Workflow & 911 Pocket-Dial Guard
+    // -----------------------------------------------------------------------
+
+    fun selectBtamRoleOption(role: BtamOperationalRole) {
+        _uiState.update { state ->
+            val autoPathway = when (role) {
+                BtamOperationalRole.BTAM_INVESTIGATOR,
+                BtamOperationalRole.TEAM_LEAD -> BtamAffiliationPathway.AFFILIATED
+                BtamOperationalRole.PUBLIC_BYSTANDER ->
+                    if (state.btamAffiliationOrgName.trim().isEmpty()) {
+                        BtamAffiliationPathway.UNAFFILIATED_PUBLIC
+                    } else {
+                        state.btamAffiliationPathway
+                    }
+                BtamOperationalRole.COMPLIANCE_AUDITOR -> state.btamAffiliationPathway
+            }
+            state.copy(
+                selectedBtamRole = role,
+                btamAffiliationPathway = autoPathway,
+                btamGatewayError = null
+            )
+        }
+    }
+
+    fun setBtamAffiliationPathway(pathway: BtamAffiliationPathway) {
+        _uiState.update { it.copy(btamAffiliationPathway = pathway, btamGatewayError = null) }
+    }
+
+    fun updateBtamAffiliationOrgName(orgName: String) {
+        _uiState.update { it.copy(btamAffiliationOrgName = orgName, btamGatewayError = null) }
+    }
+
+    fun setBtamUserAgreementAccepted(accepted: Boolean) {
+        _uiState.update { it.copy(btamUserAgreementAccepted = accepted, btamGatewayError = null) }
+    }
+
+    fun setBtamPolicyDialogOpen(open: Boolean) {
+        _uiState.update { it.copy(btamPolicyDialogOpen = open) }
+    }
+
+    fun acceptPolicyFromDialog() {
+        _uiState.update {
+            it.copy(
+                btamUserAgreementAccepted = true,
+                btamPolicyDialogOpen = false,
+                btamGatewayError = null
+            )
+        }
+    }
+
+    fun setBtamApiDirectoryOpen(open: Boolean) {
+        _uiState.update { it.copy(btamApiDirectoryOpen = open) }
+    }
+
+    fun unlockBtamSession() {
+        val current = _uiState.value
+        val role = current.selectedBtamRole
+        if (role == null) {
+            _uiState.update { it.copy(btamGatewayError = "Step 1 Required: Select an operational role before unlocking VeriScope tools.") }
+            return
+        }
+        if (current.btamAffiliationPathway == BtamAffiliationPathway.AFFILIATED &&
+            current.btamAffiliationOrgName.trim().length < 2
+        ) {
+            _uiState.update {
+                it.copy(btamGatewayError = "Step 2 Required: Enter your participating organization, workplace, school, or venue name (or choose Unaffiliated Public).")
+            }
+            return
+        }
+        if (!current.btamUserAgreementAccepted) {
+            _uiState.update {
+                it.copy(btamGatewayError = "Step 3 Required: Accept the Non-Affiliation, Non-Endorsement & Use-At-Own-Risk User Agreement to continue.")
+            }
+            return
+        }
+        _uiState.update {
+            it.copy(
+                btamSessionUnlocked = true,
+                btamGatewayError = null,
+                btamWorkspaceModalOpen = false,
+                currentTab = NavigationTab.DASHBOARD
+            )
+        }
+        ensureStartupWarmup()
+    }
+
+    fun lockBtamSessionToGateway() {
+        _uiState.update {
+            it.copy(
+                btamSessionUnlocked = false,
+                btamWorkspaceModalOpen = false,
+                isFullScreenMapActive = false,
+                bystanderPortalOpen = false
+            )
+        }
+    }
+
+    fun openBystanderPortalOption(option: BystanderSideMenuOption? = null) {
+        if (option != null) {
+            bystanderReferralCoordinator.selectOption(option)
+        }
+        _uiState.update { it.copy(bystanderPortalOpen = true) }
+    }
+
+    fun setBystanderPortalOpen(open: Boolean) {
+        _uiState.update { it.copy(bystanderPortalOpen = open) }
+    }
+
+    fun setBtamWorkspaceModalOpen(open: Boolean) {
+        _uiState.update { it.copy(btamWorkspaceModalOpen = open) }
+    }
+
+    fun setBtamBystanderStage(stage: BtamBystanderStage) {
+        _uiState.update { it.copy(btamBystanderStage = stage) }
+    }
+
+    fun setBtamLifeSafetyImminentThreat(isImminent: Boolean) {
+        _uiState.update {
+            it.copy(
+                btamLifeSafetyImminentThreat = isImminent,
+                btamBystanderStage = if (isImminent) BtamBystanderStage.STAGE_1_LIFE_SAFETY else BtamBystanderStage.STAGE_2_AFFILIATION
+            )
+        }
+    }
+
+    fun toggleNtacIndicator(indicator: NtacIndicatorCategory) {
+        _uiState.update { state ->
+            val updated = state.btamSelectedIndicators.toMutableSet()
+            if (updated.contains(indicator)) updated.remove(indicator) else updated.add(indicator)
+            state.copy(btamSelectedIndicators = updated, btamAntiProfilingAlert = null)
+        }
+    }
+
+    fun updateBtamIntakeDrafts(
+        leakage: String? = null,
+        grievance: String? = null,
+        probing: String? = null,
+        contextArtifacts: String? = null,
+        obsDateTimeLoc: String? = null,
+        witnessNote: String? = null
+    ) {
+        _uiState.update { state ->
+            val nextLeak = leakage ?: state.btamLeakageDraft
+            val nextGriev = grievance ?: state.btamGrievanceDraft
+            val nextProbe = probing ?: state.btamProbingDraft
+            val nextCtx = contextArtifacts ?: state.btamContextArtifactsDraft
+            val (passed, note) = BtamAntiProfilingGuard.evaluateComplianceNote(
+                listOf(nextLeak, nextGriev, nextProbe, nextCtx)
+            )
+            state.copy(
+                btamLeakageDraft = nextLeak,
+                btamGrievanceDraft = nextGriev,
+                btamProbingDraft = nextProbe,
+                btamContextArtifactsDraft = nextCtx,
+                btamObsDateTimeLocDraft = obsDateTimeLoc ?: state.btamObsDateTimeLocDraft,
+                btamWitnessNoteDraft = witnessNote ?: state.btamWitnessNoteDraft,
+                btamAntiProfilingAlert = if (passed) null else note
+            )
+        }
+    }
+
+    fun computePlannedBtamUrgencyTier(state: ForensicUiState = _uiState.value): BtamUrgencyTier {
+        if (state.btamLifeSafetyImminentThreat == true) return BtamUrgencyTier.EMERGENCY
+        val hasHighRiskIndicator = state.btamSelectedIndicators.contains(NtacIndicatorCategory.PROBES_PREATTACK) ||
+            (state.btamSelectedIndicators.contains(NtacIndicatorCategory.LEAKAGE_COMMUNICATIONS) &&
+                state.btamSelectedIndicators.contains(NtacIndicatorCategory.GRIEVANCE_FIXATION))
+        if (hasHighRiskIndicator || state.btamSelectedIndicators.size >= 3) return BtamUrgencyTier.PRIORITY
+        return BtamUrgencyTier.STANDARD
+    }
+
+    fun submitBtamBystanderReport() {
+        val state = _uiState.value
+        val (antiProfilingOk, guardMsg) = BtamAntiProfilingGuard.evaluateComplianceNote(
+            listOf(
+                state.btamLeakageDraft,
+                state.btamGrievanceDraft,
+                state.btamProbingDraft,
+                state.btamContextArtifactsDraft
+            )
+        )
+        if (!antiProfilingOk) {
+            _uiState.update { it.copy(btamAntiProfilingAlert = guardMsg) }
+            return
+        }
+
+        val isUnaffiliated = state.btamAffiliationPathway == BtamAffiliationPathway.UNAFFILIATED_PUBLIC
+        val scrubLeak = if (isUnaffiliated) BtamPiiScrubber.scrub(state.btamLeakageDraft) else BtamPiiScrubber.ScrubResult(state.btamLeakageDraft.trim(), 0, emptyList())
+        val scrubGriev = if (isUnaffiliated) BtamPiiScrubber.scrub(state.btamGrievanceDraft) else BtamPiiScrubber.ScrubResult(state.btamGrievanceDraft.trim(), 0, emptyList())
+        val scrubProbe = if (isUnaffiliated) BtamPiiScrubber.scrub(state.btamProbingDraft) else BtamPiiScrubber.ScrubResult(state.btamProbingDraft.trim(), 0, emptyList())
+        val scrubCtx = if (isUnaffiliated) BtamPiiScrubber.scrub(state.btamContextArtifactsDraft) else BtamPiiScrubber.ScrubResult(state.btamContextArtifactsDraft.trim(), 0, emptyList())
+        val scrubObs = if (isUnaffiliated) BtamPiiScrubber.scrub(state.btamObsDateTimeLocDraft) else BtamPiiScrubber.ScrubResult(state.btamObsDateTimeLocDraft.trim(), 0, emptyList())
+        val scrubWitness = if (isUnaffiliated) BtamPiiScrubber.scrub(state.btamWitnessNoteDraft) else BtamPiiScrubber.ScrubResult(state.btamWitnessNoteDraft.trim(), 0, emptyList())
+
+        val totalRedactions = scrubLeak.redactionCount + scrubGriev.redactionCount +
+            scrubProbe.redactionCount + scrubCtx.redactionCount + scrubObs.redactionCount + scrubWitness.redactionCount
+        val redactedCats = (scrubLeak.redactedCategories + scrubGriev.redactedCategories +
+            scrubProbe.redactedCategories + scrubCtx.redactedCategories + scrubObs.redactedCategories + scrubWitness.redactedCategories).distinct()
+
+        val tier = computePlannedBtamUrgencyTier(state)
+        val token = BtamTokenGenerator.generateCaseToken()
+        val nowUtc = BtamTokenGenerator.formatUtcNow()
+        val orgLabel = if (isUnaffiliated) {
+            "Unaffiliated Public Volunteer Prevention Pool"
+        } else {
+            state.btamAffiliationOrgName.ifBlank { "Participating Organization" }
+        }
+        val statusLabel = when {
+            tier == BtamUrgencyTier.EMERGENCY -> "Tier 1 Emergency Expedited — 911 + Responder Alert"
+            isUnaffiliated -> "Archived in PII-Scrubbed Volunteer Prevention Pool"
+            else -> "Queued for Authorized BTAM Investigator Review"
+        }
+        val submission = BtamCaseSubmission(
+            token = token,
+            createdAtUtc = nowUtc,
+            urgencyTier = tier,
+            isLifeSafetyEmergency = state.btamLifeSafetyImminentThreat == true,
+            pathway = state.btamAffiliationPathway,
+            organizationName = orgLabel,
+            indicators = state.btamSelectedIndicators.ifEmpty { setOf(NtacIndicatorCategory.ACUTE_STRESSORS) },
+            leakageSummary = scrubLeak.cleanedText.ifBlank { "No leakage statements reported." },
+            grievanceSummary = scrubGriev.cleanedText.ifBlank { "No fixation/grievance narrative provided." },
+            probingSummary = scrubProbe.cleanedText.ifBlank { "No probing/weapon acquisition reported." },
+            contextAndArtifacts = scrubCtx.cleanedText.ifBlank { "Observable context logged for baseline review." },
+            observationDateTimeLocation = scrubObs.cleanedText.ifBlank { "Time/location not specified" },
+            witnessCountNote = scrubWitness.cleanedText.ifBlank { "No additional witness notes" },
+            statusLabel = statusLabel,
+            piiScrubApplied = isUnaffiliated,
+            piiRedactionCount = totalRedactions,
+            distressSupportFlagged = state.btamSelectedIndicators.contains(NtacIndicatorCategory.ACUTE_STRESSORS)
+        )
+        val auditEntry = BtamPiiAuditLogEntry(
+            id = "audit_${System.currentTimeMillis()}",
+            token = token,
+            timestampUtc = nowUtc,
+            pathway = state.btamAffiliationPathway,
+            redactedCategories = if (isUnaffiliated && redactedCats.isEmpty()) listOf("Device Metadata Stripped") else redactedCats,
+            redactionCount = totalRedactions,
+            antiProfilingPassed = true
+        )
+
+        _uiState.update {
+            it.copy(
+                btamLatestIssuedToken = token,
+                btamTokenLookupQuery = token,
+                btamTokenLookupResult = submission,
+                btamTokenLookupMessage = "Anonymous Case Token issued. Save $token to check status or reply asynchronously.",
+                btamSubmissions = listOf(submission) + it.btamSubmissions,
+                btamPiiAuditLogs = listOf(auditEntry) + it.btamPiiAuditLogs,
+                btamBystanderStage = BtamBystanderStage.STAGE_5_CASE_TOKEN,
+                btamSelectedQueueToken = token
+            )
+        }
+    }
+
+    fun updateBtamTokenLookupQuery(query: String) {
+        _uiState.update { it.copy(btamTokenLookupQuery = query, btamTokenLookupMessage = null) }
+    }
+
+    fun lookupBtamCaseByToken(tokenInput: String = _uiState.value.btamTokenLookupQuery) {
+        val normalized = tokenInput.trim().uppercase(Locale.US)
+        val match = _uiState.value.btamSubmissions.firstOrNull { it.token.equals(normalized, ignoreCase = true) }
+        _uiState.update {
+            if (match != null) {
+                it.copy(
+                    btamTokenLookupQuery = normalized,
+                    btamTokenLookupResult = match,
+                    btamTokenLookupMessage = "Token verified — anonymous two-way channel active."
+                )
+            } else {
+                it.copy(
+                    btamTokenLookupQuery = normalized,
+                    btamTokenLookupResult = null,
+                    btamTokenLookupMessage = "No active case found for token '$normalized'."
+                )
+            }
+        }
+    }
+
+    fun updateBtamBystanderFollowUpDraft(text: String) {
+        _uiState.update { it.copy(btamBystanderFollowUpDraft = text) }
+    }
+
+    fun sendAnonymousBystanderFollowUp() {
+        val state = _uiState.value
+        val target = state.btamTokenLookupResult ?: return
+        val raw = state.btamBystanderFollowUpDraft.trim()
+        if (raw.isEmpty()) return
+        val cleaned = if (target.pathway == BtamAffiliationPathway.UNAFFILIATED_PUBLIC) {
+            BtamPiiScrubber.scrub(raw).cleanedText
+        } else raw
+        val msg = BtamFollowUpMessage(
+            id = "fu_${System.currentTimeMillis()}",
+            senderRole = "Anonymous Bystander (${target.token})",
+            timestampUtc = BtamTokenGenerator.formatUtcNow(),
+            body = cleaned
+        )
+        _uiState.update { current ->
+            val updatedList = current.btamSubmissions.map { sub ->
+                if (sub.token == target.token) sub.copy(followUpMessages = sub.followUpMessages + msg) else sub
+            }
+            val updatedMatch = updatedList.firstOrNull { it.token == target.token }
+            current.copy(
+                btamSubmissions = updatedList,
+                btamTokenLookupResult = updatedMatch,
+                btamBystanderFollowUpDraft = ""
+            )
+        }
+    }
+
+    fun selectBtamQueueCase(token: String) {
+        _uiState.update { it.copy(btamSelectedQueueToken = token) }
+    }
+
+    fun updateBtamInvestigatorQuestionDraft(text: String) {
+        _uiState.update { it.copy(btamInvestigatorQuestionDraft = text) }
+    }
+
+    fun postInvestigatorFollowUpQuestion(token: String) {
+        val state = _uiState.value
+        val q = state.btamInvestigatorQuestionDraft.trim()
+        if (q.isEmpty()) return
+        val roleTitle = state.selectedBtamRole?.title ?: "BTAM Investigator"
+        val msg = BtamFollowUpMessage(
+            id = "iq_${System.currentTimeMillis()}",
+            senderRole = roleTitle,
+            timestampUtc = BtamTokenGenerator.formatUtcNow(),
+            body = q
+        )
+        _uiState.update { current ->
+            val updatedList = current.btamSubmissions.map { sub ->
+                if (sub.token == token) {
+                    sub.copy(
+                        statusLabel = "Investigator Follow-Up Requested",
+                        followUpMessages = sub.followUpMessages + msg
+                    )
+                } else sub
+            }
+            val refreshedLookup = if (current.btamTokenLookupResult?.token == token) {
+                updatedList.firstOrNull { it.token == token }
+            } else current.btamTokenLookupResult
+            current.copy(
+                btamSubmissions = updatedList,
+                btamTokenLookupResult = refreshedLookup,
+                btamInvestigatorQuestionDraft = ""
+            )
+        }
+    }
+
+    fun toggleBtamCaseDiscipline(token: String, discipline: String) {
+        _uiState.update { current ->
+            val updatedList = current.btamSubmissions.map { sub ->
+                if (sub.token == token) {
+                    val nextSet = sub.assignedDisciplines.toMutableSet()
+                    if (nextSet.contains(discipline)) nextSet.remove(discipline) else nextSet.add(discipline)
+                    sub.copy(assignedDisciplines = nextSet)
+                } else sub
+            }
+            current.copy(btamSubmissions = updatedList)
+        }
+    }
+
+    fun recordHumanAuthorityDecision(token: String, decisionStatus: String, authorityNote: String) {
+        _uiState.update { current ->
+            val updatedList = current.btamSubmissions.map { sub ->
+                if (sub.token == token) {
+                    sub.copy(
+                        statusLabel = decisionStatus,
+                        humanAuthorityNote = authorityNote
+                    )
+                } else sub
+            }
+            val refreshedLookup = if (current.btamTokenLookupResult?.token == token) {
+                updatedList.firstOrNull { it.token == token }
+            } else current.btamTokenLookupResult
+            current.copy(btamSubmissions = updatedList, btamTokenLookupResult = refreshedLookup)
+        }
+    }
+
+    fun request911CallConfirmation() {
+        _uiState.update { it.copy(btamShow911ConfirmDialog = true, btam911StatusNote = null) }
+    }
+
+    fun dismiss911CallConfirmation() {
+        _uiState.update {
+            it.copy(
+                btamShow911ConfirmDialog = false,
+                btam911StatusNote = "911 dial cancelled — accidental tap / pocket-call guard active."
+            )
+        }
+    }
+
+    fun confirmAndLaunch911Dialer(context: android.content.Context) {
+        val res = EmergencyDialerBridge.openDefaultDialerFor911(context)
+        _uiState.update {
+            it.copy(
+                btamShow911ConfirmDialog = false,
+                btam911StatusNote = res.fold(
+                    onSuccess = { msg -> msg },
+                    onFailure = { err -> "Unable to open phone dialer (${err.localizedMessage ?: "no dialer available"}). Dial 911 manually if in immediate danger." }
+                )
             )
         }
     }

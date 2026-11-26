@@ -2,6 +2,8 @@ package com.example.network
 
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
@@ -254,8 +256,8 @@ class NasaSatFeedRepository(
         category: NasaEonetCategory = NasaEonetCategory.ALL,
         status: String = "open",
         limit: Int = 25
-    ): Result<List<NasaSatEvent>> {
-        return try {
+    ): Result<List<NasaSatEvent>> = withContext(Dispatchers.IO) {
+        try {
             val response = api.getEvents(
                 status = status,
                 limit = limit,
@@ -263,8 +265,8 @@ class NasaSatFeedRepository(
             )
             val mapped = response.events.mapNotNull { dto -> mapDtoToDomain(dto) }
             Result.success(mapped)
-        } catch (e: Exception) {
-            Result.failure(e)
+        } catch (t: Throwable) {
+            Result.failure(t)
         }
     }
 

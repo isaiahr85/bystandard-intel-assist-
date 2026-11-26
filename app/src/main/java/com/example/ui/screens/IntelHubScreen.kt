@@ -52,16 +52,20 @@ fun IntelHubScreen(
                 uiState = uiState,
                 modifier = Modifier.weight(1f)
             )
+            IntelSubMode.CIVIC_SYSTEM -> CivicIntelligenceScreen(
+                viewModel = viewModel,
+                modifier = Modifier.weight(1f)
+            )
         }
 
         // Compact high-contrast color-coded bottom mode bar right above main navigation
         Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Slate900)
                 .border(1.dp, DarkBorder)
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .padding(horizontal = 8.dp, vertical = 8.dp)
         ) {
             IntelSubMode.values().forEach { mode ->
                 val isSelected = uiState.selectedIntelSubMode == mode
@@ -70,6 +74,7 @@ fun IntelHubScreen(
                     IntelSubMode.AI_VECTOR -> VioletVector
                     IntelSubMode.NARRATIVE_OPS -> EmeraldVerified
                     IntelSubMode.CBRN_HAZARD -> AmberRadar
+                    IntelSubMode.CIVIC_SYSTEM -> BlueSat
                 }
                 val tabLabel = when (mode) {
                     IntelSubMode.CASEBOOK -> "Cases (${uiState.cases.size})"
@@ -89,12 +94,12 @@ fun IntelHubScreen(
                             RoundedCornerShape(8.dp)
                         )
                         .clickable { viewModel.selectIntelSubMode(mode) }
-                        .padding(vertical = 8.dp, horizontal = 3.dp)
+                        .padding(vertical = 8.dp, horizontal = 2.dp)
                         .testTag("intel_mode_${mode.name.lowercase()}")
                 ) {
                     Text(
                         text = tabLabel,
-                        fontSize = 10.sp,
+                        fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = PlusJakartaFontFamily,
                         color = if (isSelected) Slate950 else Slate100,

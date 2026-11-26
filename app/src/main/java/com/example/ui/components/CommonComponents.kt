@@ -12,6 +12,8 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,6 +30,16 @@ import com.example.tools.LocalAccessibilityAudio
 import com.example.tools.TextScalePreset
 import com.example.ui.theme.*
 
+@Immutable
+data class BtamTopBarBridge(
+    val roleShortLabel: String,
+    val onOpenOversightConsole: () -> Unit,
+    val onRequest911Confirm: () -> Unit,
+    val onOpenSideMenu: () -> Unit = {}
+)
+
+val LocalBtamTopBarBridge = staticCompositionLocalOf<BtamTopBarBridge?> { null }
+
 @Composable
 fun ForensicTopBar(
     title: String,
@@ -36,6 +48,7 @@ fun ForensicTopBar(
     modifier: Modifier = Modifier
 ) {
     val a11y = LocalAccessibilityAudio.current
+    val btamBridge = LocalBtamTopBarBridge.current
     val palette = LocalMapPalette.current
     val isLargeText = a11y.textScalePreset != TextScalePreset.STANDARD
 
@@ -58,6 +71,21 @@ fun ForensicTopBar(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
                 ) {
+                    if (btamBridge != null) {
+                        IconButton(
+                            onClick = { btamBridge.onOpenSideMenu() },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .testTag("topbar_side_menu_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Menu,
+                                contentDescription = "Open Bystander Referrals Side Menu",
+                                tint = palette.advisoryBlue
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
                     Box(
                         modifier = Modifier
                             .size(38.dp)
@@ -235,6 +263,54 @@ fun ForensicTopBar(
                         color = palette.textPrimary,
                         maxLines = 1
                     )
+                }
+
+                btamBridge?.let { btam ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .heightIn(min = 34.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(palette.advisoryBlue.copy(alpha = 0.16f))
+                            .border(1.dp, palette.advisoryBlue.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
+                            .clickable { btam.onOpenOversightConsole() }
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                            .testTag("topbar_btam_console_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Shield,
+                            contentDescription = "Open BTAM Role Console",
+                            tint = palette.advisoryBlue,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = btam.roleShortLabel,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = palette.textPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .heightIn(min = 34.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(palette.criticalRed.copy(alpha = 0.16f))
+                            .border(1.dp, palette.criticalRed, RoundedCornerShape(8.dp))
+                            .clickable { btam.onRequest911Confirm() }
+                            .padding(horizontal = 7.dp, vertical = 5.dp)
+                            .testTag("topbar_call_911_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Call,
+                            contentDescription = "Emergency 911 Dialer Confirmation",
+                            tint = palette.criticalRed,
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
                 }
             }
         }

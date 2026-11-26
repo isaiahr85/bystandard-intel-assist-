@@ -17,6 +17,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withContext
 import okhttp3.Request
 
 // ---------------------------------------------------------------------------
@@ -476,7 +477,8 @@ interface FaaWeatherCamsApi {
 class HawaiiWebcamsRepository(
     private val faaWeatherCamsApi: FaaWeatherCamsApi = createDefaultFaaWeatherCamsApi()
 ) {
-    suspend fun fetchSnapshot(): HawaiiWebcamsSnapshot = coroutineScope {
+    suspend fun fetchSnapshot(): HawaiiWebcamsSnapshot = withContext(Dispatchers.IO) {
+        coroutineScope {
         val usgs = HawaiiWebcamsReference.usgsHvoCams
         val uh = HawaiiWebcamsReference.uhSystemCams
 
@@ -534,6 +536,7 @@ class HawaiiWebcamsRepository(
             faaError = faaError,
             faaSiteCount = hiSiteCount
         )
+        }
     }
 
     /**

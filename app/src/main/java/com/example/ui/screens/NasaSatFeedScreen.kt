@@ -667,7 +667,7 @@ private fun GibsImageryCard(
                             referer = "https://worldview.earthdata.nasa.gov/"
                         ),
                         contentDescription = "NASA GIBS satellite imagery for $targetLabel",
-                        contentScale = ContentScale.FillBounds,
+                        contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .fillMaxSize()
                             .testTag("gibs_satellite_image")
